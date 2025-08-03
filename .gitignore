@@ -1,0 +1,14 @@
+# Security: Never commit these files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Token storage - Never commit actual tokens
+tokens/
+*.encrypted.json
+database/
+
+# Node.js
+node_modules/
+package-lock.json

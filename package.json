@@ -1,0 +1,61 @@
+{
+  "name": "@your-org/ebay-oauth-token-manager",
+  "version": "1.0.0",
+  "description": "Comprehensive eBay OAuth 2.0 token management library with SQLite storage and file-based backup",
+  "main": "src/index.js",
+  "type": "module",
+  "keywords": [
+    "ebay",
+    "oauth",
+    "oauth2",
+    "token",
+    "management",
+    "api",
+    "authentication",
+    "authorization",
+    "sqlite",
+    "encryption"
+  ],
+  "author": "Your Organization",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/ebay-oauth-token-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/ebay-oauth-token-manager/issues"
+  },
+  "homepage": "https://github.com/your-org/ebay-oauth-token-manager#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7",
+    "sqlite": "^5.1.1",
+    "axios": "^1.11.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.57.0"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint src/",
+    "example:database": "node examples/database-example.js",
+    "example:file": "node examples/file-example.js"
+  },
+  "files": [
+    "src/",
+    "config/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.js",
+    "./database": "./src/UserAccessToken_AuthorizationCodeManager.js",
+    "./file": "./src/LocalSharedTokenManager.js",
+    "./scopes": "./src/ebayScopes.js"
+  }
+}
