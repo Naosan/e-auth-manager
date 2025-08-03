@@ -1,5 +1,5 @@
 {
-  "name": "@your-org/ebay-oauth-token-manager",
+  "name": "ebay-oauth-token-manager",
   "version": "1.0.0",
   "description": "Comprehensive eBay OAuth 2.0 token management library with SQLite storage and file-based backup",
   "main": "src/index.js",
@@ -16,16 +16,16 @@
     "sqlite",
     "encryption"
   ],
-  "author": "Your Organization",
+  "author": "Naosan",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/ebay-oauth-token-manager.git"
+    "url": "https://github.com/Naosan/ebay-oauth-token-manager.git"
   },
   "bugs": {
-    "url": "https://github.com/your-org/ebay-oauth-token-manager/issues"
+    "url": "https://github.com/Naosan/ebay-oauth-token-manager/issues"
   },
-  "homepage": "https://github.com/your-org/ebay-oauth-token-manager#readme",
+  "homepage": "https://github.com/Naosan/ebay-oauth-token-manager#readme",
   "engines": {
     "node": ">=16.0.0"
   },
