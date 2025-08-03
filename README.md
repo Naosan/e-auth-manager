@@ -15,7 +15,7 @@ A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with multiple
 ## 📦 Installation
 
 ```bash
-npm install @your-org/ebay-oauth-token-manager
+npm install ebay-oauth-token-manager
 ```
 
 ## 🔧 Quick Start
@@ -30,7 +30,6 @@ EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
 # Optional: Configuration
-EBAY_DEFAULT_APP_ID=your_default_app_id
 EBAY_MASTER_KEY=your_secure_master_key_change_me
 EBAY_ENVIRONMENT=PRODUCTION
 ```
@@ -38,19 +37,19 @@ EBAY_ENVIRONMENT=PRODUCTION
 ### 2. Basic Usage
 
 ```javascript
-import { getBrowseApiToken, getTradingApiToken } from '@your-org/ebay-oauth-token-manager';
+import { getBrowseApiToken, getTradingApiToken } from 'ebay-oauth-token-manager';
 
 // Get Application Access Token for Browse API (public data)
 const browseToken = await getBrowseApiToken();
 
 // Get User Access Token for Trading API (private operations)
-const tradingToken = await getTradingApiToken('your-app-id');
+const tradingToken = await getTradingApiToken(); // App ID is optional
 ```
 
 ### 3. Direct Class Usage
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@your-org/ebay-oauth-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from 'ebay-oauth-token-manager';
 
 const tokenManager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_ebay_client_id',
@@ -67,7 +66,7 @@ const token = await tokenManager.getUserAccessTokenByAppId('your-app-id');
 ### Database Storage (Recommended)
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@your-org/ebay-oauth-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from 'ebay-oauth-token-manager';
 
 const tokenManager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_ebay_client_id',
@@ -82,7 +81,7 @@ const tokenManager = new UserAccessToken_AuthorizationCodeManager({
 ### File Storage (Cross-platform)
 
 ```javascript
-import { LocalSharedTokenManager } from '@your-org/ebay-oauth-token-manager';
+import { LocalSharedTokenManager } from 'ebay-oauth-token-manager';
 
 const tokenManager = new LocalSharedTokenManager({
   masterKey: 'your_secure_master_key',
@@ -156,10 +155,14 @@ const token = await getBrowseApiToken({
 Get User Access Token for eBay Trading API (private operations).
 
 ```javascript
+// App ID is optional - uses EBAY_CLIENT_ID if not provided
 const token = await getTradingApiToken('your-app-id', {
   clientId: 'custom_client_id',
   clientSecret: 'custom_secret'
 });
+
+// Or use without App ID
+const token = await getTradingApiToken();
 ```
 
 ### Classes
@@ -340,6 +343,31 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Issues**: [GitHub Issues](https://github.com/your-org/ebay-oauth-token-manager/issues)
 - **Documentation**: [GitHub Wiki](https://github.com/your-org/ebay-oauth-token-manager/wiki)
 - **eBay Developer Program**: [developer.ebay.com](https://developer.ebay.com)
+
+## 🚨 eBay OAuth Token Generation Limitations
+
+### **IMPORTANT: Refresh Token Cannot Be Generated via API**
+
+**eBay OAuth Specification:**
+- **Refresh tokens CANNOT be generated through API calls**
+- **Manual browser-based authentication flow is REQUIRED for initial token generation**
+- **Only access tokens can be refreshed using existing refresh tokens**
+
+**Impact on Development:**
+1. **Initial Setup**: Requires manual eBay OAuth consent flow through browser
+2. **Token Management**: This library can only refresh existing tokens, not create new ones
+3. **Production Deployment**: Valid refresh tokens must be obtained before deployment
+
+**Typical Workflow:**
+```javascript
+// Step 1: Manual browser authentication (one-time setup)
+// Visit eBay OAuth consent URL and obtain initial tokens
+
+// Step 2: Use this library for automatic token management
+const token = await getTradingApiToken(); // Refreshes automatically if needed
+```
+
+**Note**: This is an eBay API limitation, not a library limitation.
 
 ## 🔗 Related Projects
 
