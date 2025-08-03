@@ -30,7 +30,7 @@ export function loadConfig(options = {}) {
     clientSecret: options.clientSecret || process.env.EBAY_CLIENT_SECRET,
     
     // Optional configuration
-    defaultAppId: options.defaultAppId || process.env.EBAY_DEFAULT_APP_ID,
+    defaultAppId: options.defaultAppId || process.env.EBAY_CLIENT_ID,
     environment: options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
     
     // Token storage configuration

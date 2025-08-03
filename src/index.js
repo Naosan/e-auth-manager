@@ -45,8 +45,21 @@ export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType }
  * @param {Object} options - Configuration options
  * @returns {Promise<string>} - Browse API用 Application Access Token
  */
-export const getBrowseApiToken = (options = {}) => {
+export const getBrowseApiToken = (appId, options = {}) => {
   console.log('🔑 Getting Browse API Application Access Token');
+  
+  // Handle case where first parameter is options object (backward compatibility)
+  if (typeof appId === 'object' && appId !== null) {
+    options = appId;
+    appId = undefined;
+  }
+  
+  if (!appId) {
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
   const manager = new ApplicationAccessToken_ClientCredentialsManager({ ...config, ...options });
   return manager.getApplicationAccessToken();
 };
@@ -62,11 +75,15 @@ export const getBrowseApiToken = (options = {}) => {
 export const getTradingApiToken = (appId, options = {}) => {
   console.log('🔑 Getting Trading API User Access Token');
   if (!appId) {
-    appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID; // App ID (Client ID) - eBay official name
   }
   
   if (!appId) {
-    throw new Error('Trading API requires App ID. Set EBAY_DEFAULT_APP_ID or EBAY_API_APP_NAME environment variable or pass appId parameter.');
+    console.warn('⚠️ No App ID provided, using default configuration. Consider setting EBAY_CLIENT_ID environment variable.');
+    // Use a default instead of throwing error
+    appId = 'default';
   }
 
   if (useDatabase) {
@@ -158,13 +175,21 @@ export const initialize = () => {
  * Check refresh token validity (used by GetMySellerList and EStocksStockAndPriceDBManager)  
  * @returns {Promise<boolean>}
  */
-export const checkRefreshTokenValidity = () => {
+export const checkRefreshTokenValidity = (appId) => {
+  if (!appId) {
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
   if (useDatabase) {
     return defaultTokenManager.checkRefreshTokenValidity();
   } else if (useLegacyFile) {
     return defaultTokenManager.checkRefreshTokenValidity();
   } else {
-    throw new Error('checkRefreshTokenValidity requires database or file mode');
+    console.warn('⚠️ Token validation requires database or file mode. Returning false.');
+    return Promise.resolve(false);
   }
 };
 
