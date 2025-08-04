@@ -607,6 +607,39 @@ EBAY_CLIENT_SECRET=your_ebay_client_secret_here
 EBAY_MASTER_KEY=generate_secure_key_with_openssl_rand_hex_32
 ```
 
+## 📋 Changelog
+
+### [v1.0.1] - 2025-08-04
+
+#### 🐛 Bug Fixes
+- **Fixed encryption/decryption errors** in `UserAccessToken_AuthorizationCodeManager`
+  - Replaced non-existent `crypto.createCipherGCM()` with `crypto.createCipheriv('aes-256-gcm', key, iv)`
+  - Replaced non-existent `crypto.createDecipherGCM()` with `crypto.createDecipheriv('aes-256-gcm', key, iv)`
+  - This resolves the "crypto.createCipherGCM is not a function" error
+  - Affected files: `src/UserAccessToken_AuthorizationCodeManager.js` (lines 605, 650)
+
+#### 🎯 Impact
+- **Before**: Token encryption failed with "Failed to encrypt token: crypto.createCipherGCM is not a function"
+- **After**: Token encryption/decryption works correctly with AES-256-GCM authenticated encryption
+
+#### 🔧 Technical Details
+The Node.js crypto module uses `createCipheriv()` and `createDecipheriv()` for all cipher modes, including GCM. The fix corrects the function names while maintaining the same encryption algorithm (AES-256-GCM) and security level.
+
+```javascript
+// ❌ Incorrect (causing error)
+const cipher = crypto.createCipherGCM('aes-256-gcm', this.encryptionKey);
+
+// ✅ Correct
+const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+```
+
+### [v1.0.0] - Initial Release
+- Automatic dual storage (SQLite + encrypted JSON)
+- Memory caching for high performance
+- Support for Browse API, Taxonomy API, and Trading API tokens
+- AES-256-GCM encryption for secure token storage
+- Automatic token refresh capabilities
+
 ## 🔗 Related Projects
 
 - [eBay SDK for Node.js](https://github.com/ebay/ebay-nodejs-sdk)
