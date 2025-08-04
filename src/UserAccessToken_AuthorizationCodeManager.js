@@ -602,7 +602,7 @@ class UserAccessToken_AuthorizationCodeManager {
 
     try {
       const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipherGCM('aes-256-gcm', this.encryptionKey);
+      const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
       cipher.setAAD(Buffer.from('ebay-token-data'));
       
       const encrypted = Buffer.concat([
@@ -647,7 +647,7 @@ class UserAccessToken_AuthorizationCodeManager {
       const authTag = Buffer.from(authTagBase64, 'base64');
       const encrypted = Buffer.from(encryptedBase64, 'base64');
       
-      const decipher = crypto.createDecipherGCM('aes-256-gcm', this.encryptionKey);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
       decipher.setAuthTag(Buffer.from(authTagBase64, 'base64'));
       decipher.setAAD(Buffer.from('ebay-token-data'));
       
