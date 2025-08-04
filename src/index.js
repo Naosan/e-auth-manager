@@ -52,6 +52,25 @@ export const getBrowseApiToken = (appId, options = {}) => {
 };
 
 /**
+ * Taxonomy API専用のApplication Access Token取得
+ * 用途: カテゴリ階層取得、商品属性情報、カテゴリツリー探索
+ * OAuth2 Flow: Client Credentials Grant
+ * API Endpoint: /commerce/taxonomy/v1/*
+ * @param {Object} options - Configuration options
+ * @returns {Promise<string>} - Taxonomy API用 Application Access Token
+ */
+export const getTaxonomyApiToken = (options = {}) => {
+  console.log('🏷️ Getting Taxonomy API Application Access Token');
+  
+  const manager = new ApplicationAccessToken_ClientCredentialsManager({ 
+    ...config, 
+    ...options,
+    scope: options.scope || 'https://api.ebay.com/oauth/api_scope'
+  });
+  return manager.getApplicationAccessToken();
+};
+
+/**
  * Trading API専用のUser Access Token取得
  * 用途: 出品、入札、ユーザー固有操作
  * OAuth2 Flow: Authorization Code Grant

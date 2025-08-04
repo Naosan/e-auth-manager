@@ -39,10 +39,13 @@ EBAY_ENVIRONMENT=PRODUCTION
 ### 2. Basic Usage (Zero Configuration!)
 
 ```javascript
-import { getBrowseApiToken, getTradingApiToken } from 'ebay-oauth-token-manager';
+import { getBrowseApiToken, getTradingApiToken, getTaxonomyApiToken } from 'ebay-oauth-token-manager';
 
 // Get Application Access Token for Browse API (public data)
 const browseToken = await getBrowseApiToken();
+
+// Get Application Access Token for Taxonomy API (category data)
+const taxonomyToken = await getTaxonomyApiToken();
 
 // Get User Access Token for Trading API (private operations)
 // ✨ Automatic dual storage: Database + JSON file (no setup required!)  
@@ -188,6 +191,18 @@ Get Application Access Token for eBay Browse API (public data access).
 const token = await getBrowseApiToken({
   clientId: 'custom_client_id',
   clientSecret: 'custom_secret'
+});
+```
+
+#### `getTaxonomyApiToken(options?)`
+
+Get Application Access Token for eBay Taxonomy API (category and classification data).
+
+```javascript
+const token = await getTaxonomyApiToken({
+  clientId: 'custom_client_id',
+  clientSecret: 'custom_secret',
+  scope: 'https://api.ebay.com/oauth/api_scope'
 });
 ```
 
