@@ -133,6 +133,48 @@ The library automatically optimizes token retrieval with a smart priority system
 - **🔄 Automatic redundancy** - if one storage fails, others provide backup
 - **💾 Persistent storage** - tokens survive application restarts
 
+## 🎯 API-Specific Token Selection Guide
+
+Choose the right token function for your eBay API integration:
+
+| API Type | Function | Token Type | Use Cases | Storage |
+|----------|----------|------------|-----------|---------|
+| **Browse API** | `getBrowseApiToken()` | Application Access | Product search, public listings, item details | Temporary |
+| **Taxonomy API** | `getTaxonomyApiToken()` | Application Access | Category trees, item aspects, classifications | Temporary |
+| **Trading API** | `getTradingApiToken()` | User Access | Selling, buying, account management | Persistent |
+
+### Quick Decision Tree
+
+```
+🤔 Which API are you calling?
+
+├─ 📊 Public data (anyone can view on eBay)?
+│   ├─ 🏷️ Categories/Classifications → getTaxonomyApiToken()
+│   └─ 🔍 Product search/details → getBrowseApiToken()
+│
+└─ 🔒 Private data (requires user login)?
+    └─ 👤 Account/selling/buying → getTradingApiToken()
+```
+
+### Example Usage Patterns
+
+```javascript
+// ✅ Correct API selection
+import { getBrowseApiToken, getTaxonomyApiToken, getTradingApiToken } from 'ebay-oauth-token-manager';
+
+// Get product listings (Browse API)
+const browseToken = await getBrowseApiToken();
+const listings = await searchItems(browseToken, 'laptop');
+
+// Get category information (Taxonomy API)  
+const taxonomyToken = await getTaxonomyApiToken();
+const categories = await getCategoryTree(taxonomyToken);
+
+// List an item for sale (Trading API)
+const tradingToken = await getTradingApiToken('your-app-id');
+const listing = await addItem(tradingToken, itemData);
+```
+
 ## 🔐 Security Best Practices
 
 ### 1. Environment Variables
@@ -424,6 +466,146 @@ const token = await getTradingApiToken(); // Refreshes automatically if needed
 ```
 
 **Note**: This is an eBay API limitation, not a library limitation.
+
+## 🎯 Development Best Practices
+
+### 1. API Function Selection
+
+**✅ Use API-specific functions for clarity:**
+```javascript
+// ✅ Clear intent
+const taxonomyToken = await getTaxonomyApiToken();    // For category APIs
+const browseToken = await getBrowseApiToken();        // For search APIs  
+const tradingToken = await getTradingApiToken();      // For user APIs
+
+// ❌ Generic approach (harder to understand)
+const token = await getApplicationAccessToken();      // Which API is this for?
+```
+
+### 2. Error Handling Patterns
+
+**✅ Handle token-specific errors:**
+```javascript
+try {
+  const token = await getTradingApiToken('your-app-id');
+  // Use token for API calls
+} catch (error) {
+  if (error.message.includes('refresh token expired')) {
+    // Handle expired refresh token - redirect to OAuth flow
+    window.location.href = '/oauth/ebay';
+  } else if (error.message.includes('No token found')) {
+    // Handle missing token - first-time setup
+    console.log('First-time setup required');
+  } else {
+    // Handle other errors
+    console.error('Token error:', error.message);
+  }
+}
+```
+
+### 3. Performance Optimization
+
+**✅ Leverage caching effectively:**
+```javascript
+// ✅ Good: Token cached automatically
+const token1 = await getTradingApiToken('app1');  // Database lookup
+const token2 = await getTradingApiToken('app1');  // Memory cache (fast!)
+
+// ✅ Good: Pre-fetch tokens for better UX
+async function initializeApp() {
+  await getTradingApiToken();  // Pre-loads and caches token
+}
+```
+
+### 4. Multi-Environment Setup
+
+**✅ Environment-specific configuration:**
+```javascript
+// config/development.js
+export const config = {
+  clientId: process.env.EBAY_CLIENT_ID_DEV,
+  clientSecret: process.env.EBAY_CLIENT_SECRET_DEV,
+  masterKey: process.env.EBAY_MASTER_KEY_DEV,
+  environment: 'SANDBOX'
+};
+
+// config/production.js  
+export const config = {
+  clientId: process.env.EBAY_CLIENT_ID_PROD,
+  clientSecret: process.env.EBAY_CLIENT_SECRET_PROD,
+  masterKey: process.env.EBAY_MASTER_KEY_PROD,
+  environment: 'PRODUCTION'
+};
+```
+
+### 5. Testing Strategies
+
+**✅ Test token lifecycle:**
+```javascript
+import { getTaxonomyApiToken, checkRefreshTokenValidity } from 'ebay-oauth-token-manager';
+
+describe('eBay Token Management', () => {
+  test('should get valid taxonomy token', async () => {
+    const token = await getTaxonomyApiToken();
+    expect(token).toBeDefined();
+    expect(typeof token).toBe('string');
+    expect(token.length).toBeGreaterThan(50);
+  });
+
+  test('should validate refresh token', async () => {
+    const isValid = await checkRefreshTokenValidity();
+    expect(typeof isValid).toBe('boolean');
+  });
+});
+```
+
+### 6. Monitoring & Observability
+
+**✅ Add token usage monitoring:**
+```javascript
+import { getTradingApiToken } from 'ebay-oauth-token-manager';
+
+async function getTokenWithMonitoring(appId) {
+  const startTime = Date.now();
+  try {
+    const token = await getTradingApiToken(appId);
+    const duration = Date.now() - startTime;
+    
+    // Log performance metrics
+    console.log(`Token retrieved in ${duration}ms for app ${appId}`);
+    
+    return token;
+  } catch (error) {
+    console.error(`Token retrieval failed for app ${appId}:`, error.message);
+    throw error;
+  }
+}
+```
+
+### 7. Security Considerations
+
+**✅ Protect sensitive data:**
+```javascript
+// ✅ Good: Log safe information only
+console.log('Token retrieved for app:', appId);
+console.log('Token length:', token.length);
+
+// ❌ NEVER log actual tokens
+console.log('Token:', token); // Security risk!
+```
+
+**✅ Use environment variables:**
+```bash
+# .env.local (never commit)
+EBAY_CLIENT_ID=your_actual_client_id
+EBAY_CLIENT_SECRET=your_actual_secret
+EBAY_MASTER_KEY=your_secure_master_key
+
+# .env.example (safe to commit)
+EBAY_CLIENT_ID=your_ebay_client_id_here
+EBAY_CLIENT_SECRET=your_ebay_client_secret_here
+EBAY_MASTER_KEY=generate_secure_key_with_openssl_rand_hex_32
+```
 
 ## 🔗 Related Projects
 
