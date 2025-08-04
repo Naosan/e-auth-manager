@@ -7,22 +7,9 @@ import { loadConfig } from './config.js';
 // Load configuration
 const config = loadConfig();
 
-// Token management strategy selection
-const useDatabase = config.useDatabase || process.env.EBAY_USE_DATABASE_TOKENS === 'true';
-const useLegacyFile = config.useLegacyFile || process.env.EBAY_USE_LEGACY_TOKENS === 'true';
-
-// Default instance for backward compatibility
-let defaultTokenManager;
-if (useDatabase) {
-  defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
-  console.log('🗄️ Using UserAccessToken_AuthorizationCodeManager for eBay tokens');
-} else if (useLegacyFile) {
-  defaultTokenManager = new LocalSharedTokenManager(config);
-  console.log('📁 Using LocalSharedTokenManager for eBay tokens');
-} else {
-  defaultTokenManager = new ApplicationAccessToken_ClientCredentialsManager(config);
-  console.log('🔑 Using ApplicationAccessToken_ClientCredentialsManager for eBay tokens');
-}
+// Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
+let defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
+console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
 
 // Export classes for direct access if needed
 export {
@@ -86,13 +73,8 @@ export const getTradingApiToken = (appId, options = {}) => {
     appId = 'default';
   }
 
-  if (useDatabase) {
-    return defaultTokenManager.getUserAccessTokenByAppId(appId);
-  } else if (useLegacyFile) {
-    return defaultTokenManager.getToken(appId);
-  } else {
-    throw new Error('Trading API requires User Access Token with database or file storage');
-  }
+  // Always use database-based manager with automatic dual storage
+  return defaultTokenManager.getUserAccessTokenByAppId(appId);
 };
 
 // ========================================
@@ -123,13 +105,8 @@ export const getUserAccessTokenByAppId = (appId) => {
     throw new Error('App ID is required. Set EBAY_DEFAULT_APP_ID or EBAY_API_APP_NAME environment variable.');
   }
 
-  if (useDatabase) {
-    return defaultTokenManager.getUserAccessTokenByAppId(appId);
-  } else if (useLegacyFile) {
-    return defaultTokenManager.getToken(appId);
-  } else {
-    throw new Error('getUserAccessTokenByAppId requires database or file mode');
-  }
+  // Always use database-based manager with automatic dual storage
+  return defaultTokenManager.getUserAccessTokenByAppId(appId);
 };
 
 /**
@@ -138,22 +115,17 @@ export const getUserAccessTokenByAppId = (appId) => {
  * @returns {Promise<string>} - User Access token
  */
 export const getUserAccessToken = (accountName = 'default') => {
-  if (useDatabase) {
-    // Try Default App ID first if no specific account name provided
-    if (accountName === 'default') {
-      const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
-      if (appId) {
-        return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
-          return defaultTokenManager.getUserAccessToken('default');
-        });
-      }
+  // Always use database-based manager with automatic dual storage
+  // Try Default App ID first if no specific account name provided
+  if (accountName === 'default') {
+    const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+    if (appId) {
+      return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
+        return defaultTokenManager.getUserAccessToken('default');
+      });
     }
-    return defaultTokenManager.getUserAccessToken(accountName);
-  } else if (useLegacyFile) {
-    return defaultTokenManager.getToken('default');
-  } else {
-    throw new Error('getUserAccessToken requires database or file mode');
   }
+  return defaultTokenManager.getUserAccessToken(accountName);
 };
 
 /**
@@ -183,14 +155,8 @@ export const checkRefreshTokenValidity = (appId) => {
              'default';
   }
   
-  if (useDatabase) {
-    return defaultTokenManager.checkRefreshTokenValidity();
-  } else if (useLegacyFile) {
-    return defaultTokenManager.checkRefreshTokenValidity();
-  } else {
-    console.warn('⚠️ Token validation requires database or file mode. Returning false.');
-    return Promise.resolve(false);
-  }
+  // Always use database-based manager with automatic dual storage
+  return defaultTokenManager.checkRefreshTokenValidity();
 };
 
 /**
@@ -198,15 +164,10 @@ export const checkRefreshTokenValidity = (appId) => {
  * @returns {Promise<string>}
  */
 export const getValidAccessToken = () => {
-  if (useDatabase) {
-    const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
-    if (appId) {
-      return defaultTokenManager.getUserAccessTokenByAppId(appId);
-    }
-    return defaultTokenManager.getUserAccessToken('default');
-  } else if (useLegacyFile) {
-    return defaultTokenManager.getToken('default');
-  } else {
-    throw new Error('getValidAccessToken requires database or file mode');
+  // Always use database-based manager with automatic dual storage
+  const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+  if (appId) {
+    return defaultTokenManager.getUserAccessTokenByAppId(appId);
   }
+  return defaultTokenManager.getUserAccessToken('default');
 };

@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import LocalSharedTokenManager from './LocalSharedTokenManager.js';
 
 class UserAccessToken_AuthorizationCodeManager {
   constructor(options = {}) {
@@ -42,6 +43,19 @@ class UserAccessToken_AuthorizationCodeManager {
       }
       this.masterKey = options.masterKey;
       this.encryptionKey = this.deriveEncryptionKey();
+    }
+    
+    // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
+    // This provides fast JSON access and automatic backup
+    try {
+      this.fileTokenManager = new LocalSharedTokenManager({
+        masterKey: options.masterKey || 'default-secure-key-for-local-storage',
+        tokenFilePath: options.tokenFilePath
+      });
+      console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
+    } catch (error) {
+      console.warn('⚠️ Could not initialize file token manager, using database only:', error.message);
+      this.fileTokenManager = null;
     }
   }
 
@@ -101,12 +115,13 @@ class UserAccessToken_AuthorizationCodeManager {
 
   /**
    * Get valid access token by App ID (preferred method)
+   * Priority: Memory Cache → JSON File → Database → Refresh from eBay
    */
   async getUserAccessTokenByAppId(appId) {
     try {
       console.log(`🔍 Checking token for App ID: ${appId}`);
       
-      // Check memory cache first
+      // 1. Check memory cache first (fastest)
       const cacheKey = `token_appid_${appId}`;
       if (this.memoryCache.has(cacheKey)) {
         const cachedToken = this.memoryCache.get(cacheKey);
@@ -123,7 +138,33 @@ class UserAccessToken_AuthorizationCodeManager {
         }
       }
 
-      // Get token from database by App ID
+      // 2. Check JSON file second (fast)
+      if (this.fileTokenManager) {
+        try {
+          const jsonToken = await this.fileTokenManager.getToken(appId);
+          if (jsonToken && jsonToken.accessToken) {
+            // Check if access token is not expired (2 hours = 7200 seconds)
+            const tokenAge = Date.now() - new Date(jsonToken.accessTokenUpdatedDate).getTime();
+            const expiresIn = (jsonToken.expiresIn || 7200) * 1000; // Convert to milliseconds
+            
+            if (tokenAge < expiresIn - 300000) { // 5 minutes buffer
+              console.log(`📁 Using token from JSON file for App ID ${appId}`);
+              
+              // Cache in memory for next time
+              this.memoryCache.set(cacheKey, jsonToken.accessToken);
+              this.cacheExpiration.set(cacheKey, Date.now() + expiresIn - tokenAge);
+              
+              return jsonToken.accessToken;
+            } else {
+              console.log(`⏰ JSON file token expired for App ID ${appId}, will refresh`);
+            }
+          }
+        } catch (fileError) {
+          console.log(`📁 Could not read from JSON file: ${fileError.message}`);
+        }
+      }
+
+      // 3. Get token from database third
       console.log(`🗄️ Getting token from database for App ID: ${appId}`);
       const tokenData = await this.getTokenByAppId(appId);
       
@@ -343,6 +384,25 @@ class UserAccessToken_AuthorizationCodeManager {
       const cacheKey = `token_${accountName}`;
       this.memoryCache.delete(cacheKey);
       this.cacheExpiration.delete(cacheKey);
+
+      // Automatic dual storage: Also save to encrypted JSON file
+      if (this.fileTokenManager) {
+        try {
+          const appId = tokenData.appId || this.defaultAppId;
+          await this.fileTokenManager.saveToken(appId, {
+            accessToken: tokenData.accessToken,
+            refreshToken: tokenData.refreshToken,
+            expiresIn: tokenData.expiresIn || 7200,
+            refreshTokenExpiresIn: tokenData.refreshTokenExpiresIn || 47304000,
+            accessTokenUpdatedDate: tokenData.accessTokenUpdatedDate || now,
+            refreshTokenUpdatedDate: tokenData.refreshTokenUpdatedDate || now
+          });
+          console.log(`🔄 Auto-saved to encrypted JSON for app: ${appId}`);
+        } catch (fileError) {
+          console.warn(`⚠️ Could not save to JSON file:`, fileError.message);
+          // Don't throw error - database save succeeded, file save is secondary
+        }
+      }
     } catch (error) {
       console.error(`🚨 Failed to save token for ${accountName}:`, error.message);
       throw error;
