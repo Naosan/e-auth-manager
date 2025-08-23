@@ -151,8 +151,7 @@ class UserAccessToken_AuthorizationCodeManager {
               console.log(`📁 Using token from JSON file for App ID ${appId}`);
               
               // Cache in memory for next time
-              this.memoryCache.set(cacheKey, jsonToken.accessToken);
-              this.cacheExpiration.set(cacheKey, Date.now() + expiresIn - tokenAge);
+              this.updateMemoryCache(cacheKey, jsonToken.accessToken, (expiresIn - tokenAge) / 1000);
               
               return jsonToken.accessToken;
             } else {
@@ -185,12 +184,12 @@ class UserAccessToken_AuthorizationCodeManager {
         const refreshedTokenData = await this.getTokenByAppId(appId);
         if (refreshedTokenData) {
           const decryptedToken = this.decryptToken(refreshedTokenData.access_token);
-          this.updateMemoryCache(`appid_${appId}`, decryptedToken, refreshedTokenData.expires_in);
+          this.updateMemoryCache(cacheKey, decryptedToken, refreshedTokenData.expires_in);
           return decryptedToken;
         }
       } else {
         const decryptedToken = this.decryptToken(tokenData.access_token);
-        this.updateMemoryCache(`appid_${appId}`, decryptedToken, tokenData.expires_in);
+        this.updateMemoryCache(cacheKey, decryptedToken, tokenData.expires_in);
         return decryptedToken;
       }
     } catch (error) {
@@ -246,12 +245,12 @@ class UserAccessToken_AuthorizationCodeManager {
         const refreshedTokenData = await this.getTokenFromDatabase(accountName);
         if (refreshedTokenData) {
           const decryptedToken = this.decryptToken(refreshedTokenData.access_token);
-          this.updateMemoryCache(accountName, decryptedToken, refreshedTokenData.expires_in);
+          this.updateMemoryCache(`token_${accountName}`, decryptedToken, refreshedTokenData.expires_in);
           return decryptedToken;
         }
       } else {
         const decryptedToken = this.decryptToken(tokenData.access_token);
-        this.updateMemoryCache(accountName, decryptedToken, tokenData.expires_in);
+        this.updateMemoryCache(`token_${accountName}`, decryptedToken, tokenData.expires_in);
         return decryptedToken;
       }
     } catch (error) {
@@ -462,6 +461,9 @@ class UserAccessToken_AuthorizationCodeManager {
       this.memoryCache.delete(`token_${tokenData.account_name}`);
       this.cacheExpiration.delete(`token_${tokenData.account_name}`);
       
+      // 次回呼び出しを速くするため即キャッシュ
+      this.updateMemoryCache(`token_appid_${appId}`, data.access_token, data.expires_in);
+      
       return data;
     } catch (error) {
       console.error(`🚨 Failed to refresh access token for App ID ${appId}:`, error.message);
@@ -566,11 +568,12 @@ class UserAccessToken_AuthorizationCodeManager {
   /**
    * Update memory cache
    */
-  updateMemoryCache(accountName, token, expiresIn) {
-    const cacheKey = `token_${accountName}`;
+  updateMemoryCache(cacheKey, token, expiresIn) {
+    if (!token || !expiresIn) return;
+    // 実効期限の60秒前に失効扱い（従来挙動は維持しつつ安全側）
+    const ttl = Math.max(0, (expiresIn - 60) * 1000);
     this.memoryCache.set(cacheKey, token);
-    // Cache expires 60 seconds before actual token expiration
-    this.cacheExpiration.set(cacheKey, Date.now() + (expiresIn - 60) * 1000);
+    this.cacheExpiration.set(cacheKey, Date.now() + ttl);
   }
 
   /**
@@ -703,6 +706,116 @@ class UserAccessToken_AuthorizationCodeManager {
     } catch (error) {
       console.error('🚨 Failed to check refresh token validity:', error.message);
       return false;
+    }
+  }
+
+  /**
+   * Get comprehensive User Access Token information including metadata
+   * @param {string} appId - The eBay App ID to get token info for
+   * @returns {Promise<Object>} User token information object
+   */
+  async getUserTokenInfo(appId) {
+    try {
+      console.log(`🔍 Getting token info for App ID: ${appId}`);
+      
+      const tokenData = await this.getTokenByAppId(appId);
+      
+      if (!tokenData) {
+        throw new Error(`No token found for App ID: ${appId}`);
+      }
+
+      // Calculate expiration date
+      const accessTokenUpdatedDate = new Date(tokenData.access_token_updated_date);
+      const expiresAt = new Date(accessTokenUpdatedDate.getTime() + (tokenData.expires_in * 1000));
+      
+      // Decrypt tokens for return (be careful with sensitive data)
+      const decryptedAccessToken = this.decryptToken(tokenData.access_token);
+      const decryptedRefreshToken = this.decryptToken(tokenData.refresh_token);
+      
+      const tokenInfo = {
+        access_token: decryptedAccessToken,
+        refresh_token: decryptedRefreshToken,
+        expires_at: expiresAt,
+        account_name: tokenData.account_name,
+        token_type: 'User Access Token',
+        access_token_updated_date: accessTokenUpdatedDate,
+        expires_in: tokenData.expires_in,
+        refresh_token_updated_date: new Date(tokenData.refresh_token_updated_date),
+        refresh_token_expires_in: tokenData.refresh_token_expires_in
+      };
+
+      console.log(`✅ Token info retrieved for account: ${tokenData.account_name}`);
+      return tokenInfo;
+      
+    } catch (error) {
+      console.error(`🚨 Failed to get token info for App ID ${appId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get User Access Token expiration information
+   * @param {string} appId - The eBay App ID to check expiration for
+   * @returns {Promise<Object>} User token expiration information object
+   */
+  async getUserTokenExpiration(appId) {
+    try {
+      console.log(`⏰ Getting token expiration info for App ID: ${appId}`);
+      
+      const tokenData = await this.getTokenByAppId(appId);
+      
+      if (!tokenData) {
+        throw new Error(`No token found for App ID: ${appId}`);
+      }
+
+      // Calculate expiration times
+      const accessTokenUpdatedDate = new Date(tokenData.access_token_updated_date);
+      const expiresAt = new Date(accessTokenUpdatedDate.getTime() + (tokenData.expires_in * 1000));
+      const now = Date.now();
+      const expiresIn = Math.max(0, Math.floor((expiresAt.getTime() - now) / 1000));
+      
+      // Calculate percentage remaining (0-100)
+      const totalLifetime = tokenData.expires_in;
+      const percentageRemaining = totalLifetime > 0 ? Math.max(0, Math.min(100, (expiresIn / totalLifetime) * 100)) : 0;
+      
+      const expirationInfo = {
+        expiresAt: expiresAt,
+        expiresIn: expiresIn,
+        isExpired: this.isAccessTokenExpired(tokenData),
+        percentageRemaining: Math.round(percentageRemaining * 100) / 100 // Round to 2 decimal places
+      };
+
+      console.log(`✅ Token expiration info: ${expiresIn}s remaining (${percentageRemaining.toFixed(1)}%)`);
+      return expirationInfo;
+      
+    } catch (error) {
+      console.error(`🚨 Failed to get token expiration for App ID ${appId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the eBay account name associated with a User Access Token
+   * @param {string} appId - The eBay App ID to get account name for
+   * @returns {Promise<string>} The eBay account name
+   */
+  async getUserAccountName(appId) {
+    try {
+      console.log(`👤 Getting account name for App ID: ${appId}`);
+      
+      const tokenData = await this.getTokenByAppId(appId);
+      
+      if (!tokenData) {
+        throw new Error(`No token found for App ID: ${appId}`);
+      }
+
+      const accountName = tokenData.account_name;
+      console.log(`✅ Account name retrieved: ${accountName}`);
+      return accountName;
+      
+    } catch (error) {
+      console.error(`🚨 Failed to get account name for App ID ${appId}:`, error.message);
+      throw error;
     }
   }
 }

@@ -34,6 +34,10 @@ EBAY_CLIENT_SECRET=your_ebay_client_secret
 # Optional: Configuration
 EBAY_MASTER_KEY=your_secure_master_key_change_me
 EBAY_ENVIRONMENT=PRODUCTION
+
+# Optional: Advanced Configuration
+EBAY_LOG_VERBOSE=false                    # Set to 'true' to enable detailed logging
+EBAY_JSON_EXPIRY_SKEW_MS=0               # Buffer time in ms to handle token expiry edge cases
 ```
 
 ### 2. Basic Usage (Zero Configuration!)
@@ -210,16 +214,18 @@ openssl rand -hex 32
 
 ### 3. File Permissions
 
-Ensure token storage directories have appropriate permissions:
+The library automatically sets secure file permissions (600 - owner read/write only) for token files. For database files, ensure appropriate directory permissions:
 
 ```bash
 # Linux/macOS
 chmod 700 ./database/
 chmod 600 ./database/*.sqlite
 
-# Windows (PowerShell)
+# Windows (PowerShell)  
 icacls "./database" /grant:r "$env:USERNAME:(OI)(CI)F" /inheritance:r
 ```
+
+**✨ New in v1.0.2:** Token files now automatically get `chmod 600` permissions for enhanced security.
 
 ## 📚 API Reference
 
@@ -261,6 +267,52 @@ const token = await getTradingApiToken('your-app-id', {
 
 // Or use without App ID
 const token = await getTradingApiToken();
+```
+
+### NEW: Token Information Functions
+
+#### `getTokenInfo(appId?)`
+
+Get comprehensive token information including metadata.
+
+```javascript
+const tokenInfo = await getTokenInfo('your-app-id');
+// Returns:
+// {
+//   access_token: "v^1.1#i^1#p^3#r^1...",
+//   refresh_token: "v^1.1#i^1#p^3#r^1...", 
+//   expires_at: Date,
+//   account_name: "your-account",
+//   token_type: "User Access Token",
+//   access_token_updated_date: Date,
+//   expires_in: 7200,
+//   refresh_token_updated_date: Date,
+//   refresh_token_expires_in: 47304000
+// }
+```
+
+#### `getTokenExpiration(appId?)`
+
+Get token expiration information.
+
+```javascript
+const expiration = await getTokenExpiration('your-app-id');
+// Returns:
+// {
+//   expiresAt: Date,
+//   expiresIn: 3600, // seconds remaining
+//   isExpired: false,
+//   percentageRemaining: 50.0 // 0-100
+// }
+```
+
+#### `getAccountName(appId?)`
+
+Get the account name associated with a token.
+
+```javascript
+const accountName = await getAccountName('your-app-id');
+// Returns: "your-ebay-account-name"
 ```
 
 ### Classes
@@ -401,28 +453,53 @@ const tokenManager = new UserAccessToken_AuthorizationCodeManager({
 **Solution:** Check your eBay API credentials and refresh token validity:
 
 ```javascript
-const isValid = await tokenManager.checkRefreshTokenValidity();
+const isValid = await checkRefreshTokenValidity('your-app-id');
 if (!isValid) {
   console.log('Refresh token expired, need to re-authenticate');
   // Re-run eBay OAuth flow
 }
 ```
 
-### Debug Mode
+### 5. Memory Cache Issues
 
-Enable debug logging:
+**Solution:** The library automatically handles cache key consistency. If you encounter cache-related issues:
 
 ```javascript
-// Set environment variable
-process.env.DEBUG = 'ebay-oauth-token-manager:*';
+// Clear application cache and restart
+delete require.cache[require.resolve('ebay-oauth-token-manager')];
+```
 
-// Or enable console logging in your application
+### 6. High-Load Token Expiry Edge Cases
+
+**Solution:** For high-load environments where tokens might expire during processing, use the expiry buffer:
+
+```bash
+# Add 5-minute buffer for token expiry detection
+EBAY_JSON_EXPIRY_SKEW_MS=300000
+```
+
+### Debug Mode
+
+Enable debug logging with environment variables:
+
+```bash
+# Enable verbose logging (shows non-sensitive information only)
+EBAY_LOG_VERBOSE=true
+
+# Set JSON token expiry buffer (optional, for high-load environments)
+EBAY_JSON_EXPIRY_SKEW_MS=300000  # 5 minutes buffer for token expiry edge cases
+```
+
+```javascript
+// Application-level debugging (sensitive information is automatically hidden)
 console.log('🔍 Token manager debug info:', {
-  clientId: tokenManager.clientId?.substring(0, 10) + '...',
   databasePath: tokenManager.dbPath,
-  encryptionEnabled: tokenManager.encryptionEnabled
+  encryptionEnabled: tokenManager.encryptionEnabled,
+  // Note: Client IDs and auth headers are NOT logged for security
 });
 ```
+
+**🔒 Security Enhancement:** Sensitive information like client IDs and authorization headers are automatically excluded from logs to protect credentials in production environments.
 
 ## 📄 License
 
@@ -590,8 +667,12 @@ async function getTokenWithMonitoring(appId) {
 console.log('Token retrieved for app:', appId);
 console.log('Token length:', token.length);
 
-// ❌ NEVER log actual tokens
+// ❌ NEVER log actual tokens or sensitive credentials
 console.log('Token:', token); // Security risk!
+console.log('Client ID:', clientId); // Security risk!
+
+// ✅ The library automatically hides sensitive info from logs
+// Set EBAY_LOG_VERBOSE=true only in secure development environments
 ```
 
 **✅ Use environment variables:**
@@ -608,6 +689,28 @@ EBAY_MASTER_KEY=generate_secure_key_with_openssl_rand_hex_32
 ```
 
 ## 📋 Changelog
+
+### [v1.0.2] - 2025-08-23
+
+#### 🔧 Internal Improvements & Bug Fixes
+- **Fixed App ID delegation in `checkRefreshTokenValidity()`**
+  - Now properly passes App ID parameter to underlying token managers
+  - Added fallback mechanism for better reliability
+- **Fixed memory cache key inconsistencies**
+  - Unified cache key format across all methods
+  - Added immediate cache update after token refresh for better performance
+- **Enhanced security and logging**
+  - Removed sensitive information (Client IDs, auth headers) from default logs
+  - Added `EBAY_LOG_VERBOSE` environment variable for optional detailed logging
+  - Automatic file permission setting (chmod 600) for token files
+- **Added token expiry buffer configuration**
+  - New `EBAY_JSON_EXPIRY_SKEW_MS` environment variable for high-load environments
+  - Helps prevent edge cases in token expiry detection
+
+#### ✅ Compatibility
+- **100% backward compatible** - all existing code continues to work
+- **No breaking changes** to public APIs
+- **Improved reliability** for existing functionality
 
 ### [v1.0.1] - 2025-08-04
 

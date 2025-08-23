@@ -95,6 +95,7 @@ class LocalSharedTokenManager {
       const tempFile = `${this.tokenFile}.tmp`;
       await fs.writeFile(tempFile, JSON.stringify(this.encryptData(data), null, 2));
       await fs.rename(tempFile, this.tokenFile);
+      try { await fs.chmod(this.tokenFile, 0o600); } catch {}
       console.log('✅ Token file saved successfully');
     } catch (error) {
       console.error('🚨 Failed to save token file:', error.message);
@@ -208,8 +209,9 @@ class LocalSharedTokenManager {
 
     const updatedTime = new Date(token.accessTokenUpdatedDate).getTime();
     const expirationTime = updatedTime + (token.expiresIn * 1000);
+    const skewMs = Number(process.env.EBAY_JSON_EXPIRY_SKEW_MS || 0);
     
-    return Date.now() > expirationTime;
+    return Date.now() > (expirationTime - skewMs);
   }
 
   /**

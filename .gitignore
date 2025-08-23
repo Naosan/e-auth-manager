@@ -9,6 +9,12 @@ tokens/
 *.encrypted.json
 database/
 
+# Development tools and AI assistants - Do not commit to GitHub
+.claude/
+.serena/
+data/
+cipher-sessions.*
+
 # Node.js
 node_modules/
 package-lock.json

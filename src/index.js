@@ -163,8 +163,10 @@ export const initialize = () => {
 // ========================================
 
 /**
- * Check refresh token validity (used by GetMySellerList and EStocksStockAndPriceDBManager)  
- * @returns {Promise<boolean>}
+ * Check if User Refresh Token is still valid (not expired)
+ * Refresh Tokens are long-lived (typically 18 months) and allow renewal of User Access Tokens
+ * @param {string} [appId] - eBay App ID to check (optional)
+ * @returns {Promise<boolean>} True if User Refresh Token is valid, false if expired or not found
  */
 export const checkRefreshTokenValidity = (appId) => {
   if (!appId) {
@@ -175,12 +177,21 @@ export const checkRefreshTokenValidity = (appId) => {
   }
   
   // Always use database-based manager with automatic dual storage
-  return defaultTokenManager.checkRefreshTokenValidity();
+  if (typeof defaultTokenManager.checkRefreshTokenValidity === 'function') {
+    return defaultTokenManager.checkRefreshTokenValidity(appId);
+  }
+  if (defaultTokenManager.fileTokenManager?.checkRefreshTokenValidity) {
+    // クラス側未実装でも、JSON層で全体チェックが可能
+    return defaultTokenManager.fileTokenManager.checkRefreshTokenValidity(appId);
+  }
+  return Promise.resolve(false);
 };
 
 /**
- * Get valid access token (used by GetMySellerList and EStocksStockAndPriceDBManager)
- * @returns {Promise<string>}
+ * Get a valid **User Access Token** for eBay API calls
+ * - Returns a fresh User Access Token, automatically refreshing via Refresh Token if expired
+ * - User Access Tokens are short-lived (≈2 hours) and required for all account-specific operations
+ * @returns {Promise<string>} Valid User Access Token for API requests
  */
 export const getValidAccessToken = () => {
   // Always use database-based manager with automatic dual storage
@@ -190,3 +201,58 @@ export const getValidAccessToken = () => {
   }
   return defaultTokenManager.getUserAccessToken('default');
 };
+
+// ========================================
+// NEW TOKEN INFORMATION METHODS
+// ========================================
+
+/**
+ * Get comprehensive User Access Token information including metadata
+ * @param {string} appId - The eBay App ID to get token info for
+ * @returns {Promise<Object>} User token information object
+ */
+export const getUserTokenInfo = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserTokenInfo(appId);
+};
+
+/**
+ * Get User Access Token expiration information
+ * @param {string} appId - The eBay App ID to check expiration for
+ * @returns {Promise<Object>} User token expiration information object
+ */
+export const getUserTokenExpiration = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserTokenExpiration(appId);
+};
+
+/**
+ * Get the eBay account name associated with a User Access Token
+ * @param {string} appId - The eBay App ID to get account name for
+ * @returns {Promise<string>} The eBay account name
+ */
+export const getUserAccountName = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserAccountName(appId);
+};
+
+// Backward compatibility aliases for User Access Token info methods
+// DO NOT REMOVE (used by existing packages)
+export const getTokenInfo = getUserTokenInfo;
+export const getTokenExpiration = getUserTokenExpiration;
+export const getAccountName = getUserAccountName;

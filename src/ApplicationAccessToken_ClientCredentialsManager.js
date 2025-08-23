@@ -51,13 +51,14 @@ class ApplicationAccessToken_ClientCredentialsManager {
       console.log('🔄 Renewing Application Access Token...');
       
       // Log basic info (without sensitive data)
-      console.log('Client ID:', this.clientId?.substring(0, 10) + '...');
-      console.log('Token URL:', this.tokenUrl);
-      console.log('Scope:', this.scope);
+      if (process.env.EBAY_LOG_VERBOSE === 'true') {
+        console.log('Token URL:', this.tokenUrl);
+        console.log('Scope:', this.scope);
+      }
 
       // Prepare OAuth request
       const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-      console.log('Auth header:', `Basic ${auth.substring(0, 20)}...`);
+      // 認証ヘッダは原則ログ出力しない
 
       const response = await axios.post(
         this.tokenUrl,
