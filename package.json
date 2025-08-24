@@ -1,5 +1,5 @@
 {
-  "name": "ebay-oauth-token-manager",
+  "name": "@naosan/ebay-oauth-token-manager",
   "version": "1.0.0",
   "description": "Comprehensive eBay OAuth 2.0 token management library with SQLite storage and file-based backup",
   "main": "src/index.js",

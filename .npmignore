@@ -1,0 +1,54 @@
+# Development files
+.env*
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+*.test.js
+*.spec.js
+
+# Development tools
+.eslintrc*
+jest.config.*
+.prettierrc*
+
+# Git
+.git/
+.gitignore
+
+# Documentation (keep README.md)
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.github/
+
+# Build artifacts
+dist/
+build/
+
+# Database files (examples)
+database/
+*.sqlite
+*.db
+
+# Temporary directories
+tmp/
+temp/
+
+# Node modules (should already be ignored)
+node_modules/
