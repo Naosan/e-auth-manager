@@ -1,749 +1,417 @@
 # eBay OAuth Token Manager
 
-A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with multiple storage strategies, encryption, and automatic refresh capabilities.
+**A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with enterprise-grade features**
 
-## 🚀 Features
+[![npm version](https://badge.fury.io/js/@naosan/ebay-oauth-token-manager.svg)](https://www.npmjs.com/package/@naosan/ebay-oauth-token-manager)
+[![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- **🔄 Automatic Dual Storage**: Automatic SQLite database + encrypted JSON file storage (no configuration required)
-- **⚡ Performance Optimized**: Memory cache → JSON file → Database → eBay API priority for maximum speed
-- **🔄 Automatic Token Refresh**: Handles token expiration and refresh automatically
-- **🔐 AES-256-GCM Encryption**: Secure token storage with authenticated encryption
-- **💾 Memory Caching**: High-performance in-memory caching for frequently accessed tokens
-- **🔀 Multiple OAuth Flows**: Support for both Client Credentials and Authorization Code flows
-- **🌐 Cross-platform**: Works on Windows, macOS, and Linux
-- **📘 TypeScript Ready**: Includes type definitions
-- **🚫 Zero Configuration**: No environment variables needed - automatic dual storage enabled by default
+---
 
-## 📦 Installation
+## ✨ Overview
+
+This library provides robust OAuth 2.0 token management for eBay APIs with sophisticated multi-layered caching, encryption, and distributed coordination. Designed for production environments requiring high performance and security.
+
+### 🎯 Key Benefits
+
+- **Zero Configuration**: Works out-of-the-box with automatic dual storage
+- **Production Ready**: Battle-tested multi-layer caching and error recovery
+- **Enterprise Security**: AES-256-GCM encryption with machine-specific keys
+- **Multi-Instance Coordination**: SSOT (Single Source of Truth) prevents token conflicts
+- **API-Specific Optimization**: Dedicated managers for Trading API vs Browse API
+
+---
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-npm install ebay-oauth-token-manager
+npm install @naosan/ebay-oauth-token-manager
 ```
 
-## 🔧 Quick Start
+### Basic Usage
 
-### 1. Environment Setup
+```javascript
+import { getTradingApiToken, getBrowseApiToken } from '@naosan/ebay-oauth-token-manager';
 
-Create a `.env` file in your project root:
+// For Trading API (User Access Tokens)
+const tradingToken = await getTradingApiToken('your-app-id');
 
-```env
-# Required: eBay API Credentials
+// For Browse API (Application Access Tokens)  
+const browseToken = await getBrowseApiToken();
+```
+
+### Environment Setup
+
+Create a `.env` file:
+
+```bash
+# Required
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
-# Optional: Configuration
-EBAY_MASTER_KEY=your_secure_master_key_change_me
-EBAY_ENVIRONMENT=PRODUCTION
+# Security (Recommended)
+EBAY_MASTER_KEY=your_secure_256bit_encryption_key
 
-# Optional: Advanced Configuration
-EBAY_LOG_VERBOSE=false                    # Set to 'true' to enable detailed logging
-EBAY_JSON_EXPIRY_SKEW_MS=0               # Buffer time in ms to handle token expiry edge cases
+# Optional - For multi-instance coordination
+OAUTH_SSOT_JSON=/secure/path/ebay-refresh-tokens.json
+TOKEN_NAMESPACE=my-app
+
+# Optional - Environment
+EBAY_ENVIRONMENT=PRODUCTION  # or SANDBOX
 ```
 
-### 2. Basic Usage (Zero Configuration!)
+---
 
-```javascript
-import { getBrowseApiToken, getTradingApiToken, getTaxonomyApiToken } from 'ebay-oauth-token-manager';
+## 🏗️ Architecture
 
-// Get Application Access Token for Browse API (public data)
-const browseToken = await getBrowseApiToken();
+### Multi-Layer Token Retrieval System
 
-// Get Application Access Token for Taxonomy API (category data)
-const taxonomyToken = await getTaxonomyApiToken();
+The library implements a sophisticated 5-layer retrieval system:
 
-// Get User Access Token for Trading API (private operations)
-// ✨ Automatic dual storage: Database + JSON file (no setup required!)  
-const tradingToken = await getTradingApiToken(); // App ID is optional
+```
+1. Memory Cache (~1ms)          ← Fastest
+2. JSON File Cache (~10ms)      
+3. SQLite Database (~50ms)      
+4. SSOT Provider (coordination) 
+5. eBay API (~500ms)           ← Slowest (last resort)
 ```
 
-**🎯 What happens automatically:**
-1. **Memory Cache** check (fastest)
-2. **JSON File** check (fast)  
-3. **SQLite Database** check (reliable)
-4. **eBay API** refresh (if needed)
-5. **Auto-save** to both storage methods
+### Core Components
 
-### 3. Direct Class Usage
+| Component | Purpose | Token Types |
+|-----------|---------|-------------|
+| **UserAccessToken_AuthorizationCodeManager** | Trading API tokens | User Access Tokens (18-month expiry) |
+| **ApplicationAccessToken_ClientCredentialsManager** | Browse API tokens | Application Access Tokens (2-hour expiry) |
+| **FileJsonTokenProvider** | Multi-instance coordination | SSOT (Single Source of Truth) |
+| **LocalSharedTokenManager** | Cross-project sharing | Encrypted JSON storage |
+
+---
+
+## 📚 API Reference
+
+### Trading API (User Access Tokens)
+
+For private operations requiring user authorization:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from 'ebay-oauth-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from '@naosan/ebay-oauth-token-manager';
 
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: 'your_ebay_client_id',
-  clientSecret: 'your_ebay_client_secret',
-  masterKey: 'your_secure_master_key'
-  // ✨ No need to specify storage mode - dual storage is automatic!
+const manager = new UserAccessToken_AuthorizationCodeManager({
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret',
+  masterKey: 'your_encryption_key'
 });
 
-const token = await tokenManager.getUserAccessTokenByAppId('your-app-id');
+// Set initial refresh token (manual browser OAuth flow required)
+await manager.setRefreshToken('your_refresh_token', 'account_name');
+
+// Get access token (auto-refresh if expired)
+const token = await manager.getUserAccessTokenByAppId('your_app_id');
+
+// Token information
+const info = await manager.getUserTokenInfo('your_app_id');
+const expiration = await manager.getUserTokenExpiration('your_app_id');
+const accountName = await manager.getUserAccountName('your_app_id');
 ```
 
-## 🏗️ Configuration Options
+### Browse API (Application Access Tokens)
 
-### ✨ Automatic Dual Storage (Default - Recommended)
+For public data access:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from 'ebay-oauth-token-manager';
+import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/ebay-oauth-token-manager';
 
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: 'your_ebay_client_id',
-  clientSecret: 'your_ebay_client_secret',
-  masterKey: 'your_secure_master_key'
-  // 🎯 Automatic dual storage enabled by default:
-  // - SQLite database: './database/ebay_tokens.sqlite'
-  // - Encrypted JSON: Platform-specific secure location
-  // - Memory cache: High-performance temporary storage
+const manager = new ApplicationAccessToken_ClientCredentialsManager({
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret'
+});
+
+// Get application token (auto-refresh if expired)
+const token = await manager.getApplicationAccessToken();
+```
+
+### Multi-Instance Coordination (SSOT)
+
+Prevent refresh token conflicts across multiple instances:
+
+```javascript
+const manager = new UserAccessToken_AuthorizationCodeManager({
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret',
+  masterKey: 'your_encryption_key',
+  
+  // SSOT Configuration
+  ssotJsonPath: '/secure/path/tokens.json',
+  tokenNamespace: 'my-app'
 });
 ```
 
-### Custom Paths (Optional)
+---
+
+## 🔐 Security Features
+
+### AES-256-GCM Encryption
+
+All tokens are encrypted using industry-standard AES-256-GCM with:
+- **Machine-specific keys**: Derived from master key + machine ID
+- **Authenticated encryption**: Prevents tampering
+- **Unique initialization vectors**: Each encryption is unique
+
+### Secure Key Management
 
 ```javascript
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: 'your_ebay_client_id',
-  clientSecret: 'your_ebay_client_secret',
-  masterKey: 'your_secure_master_key',
-  databasePath: './custom/path/ebay_tokens.sqlite',
-  tokenFilePath: './custom/path/ebay-tokens.encrypted.json'
-});
-```
+// Environment variable (recommended)
+EBAY_MASTER_KEY=your_256_bit_secure_key
 
-### File-Only Storage (Legacy)
-
-```javascript
-import { LocalSharedTokenManager } from 'ebay-oauth-token-manager';
-
-const tokenManager = new LocalSharedTokenManager({
-  masterKey: 'your_secure_master_key',
-  tokenFilePath: './tokens/ebay-tokens.encrypted.json'
-});
-```
-
-## ⚡ Performance & Priority System
-
-The library automatically optimizes token retrieval with a smart priority system:
-
-```
-📊 Token Retrieval Priority:
-1. 🧠 Memory Cache     → ~1ms     (fastest)
-2. 📁 JSON File        → ~10ms    (fast)  
-3. 🗄️ SQLite Database  → ~50ms    (reliable)
-4. 🌐 eBay API Refresh → ~500ms   (fallback)
-```
-
-**Benefits:**
-- **🚀 Sub-millisecond access** for frequently used tokens (memory cache)
-- **📁 Fast file access** for JSON storage (10x faster than database)
-- **🔄 Automatic redundancy** - if one storage fails, others provide backup
-- **💾 Persistent storage** - tokens survive application restarts
-
-## 🎯 API-Specific Token Selection Guide
-
-Choose the right token function for your eBay API integration:
-
-| API Type | Function | Token Type | Use Cases | Storage |
-|----------|----------|------------|-----------|---------|
-| **Browse API** | `getBrowseApiToken()` | Application Access | Product search, public listings, item details | Temporary |
-| **Taxonomy API** | `getTaxonomyApiToken()` | Application Access | Category trees, item aspects, classifications | Temporary |
-| **Trading API** | `getTradingApiToken()` | User Access | Selling, buying, account management | Persistent |
-
-### Quick Decision Tree
-
-```
-🤔 Which API are you calling?
-
-├─ 📊 Public data (anyone can view on eBay)?
-│   ├─ 🏷️ Categories/Classifications → getTaxonomyApiToken()
-│   └─ 🔍 Product search/details → getBrowseApiToken()
-│
-└─ 🔒 Private data (requires user login)?
-    └─ 👤 Account/selling/buying → getTradingApiToken()
-```
-
-### Example Usage Patterns
-
-```javascript
-// ✅ Correct API selection
-import { getBrowseApiToken, getTaxonomyApiToken, getTradingApiToken } from 'ebay-oauth-token-manager';
-
-// Get product listings (Browse API)
-const browseToken = await getBrowseApiToken();
-const listings = await searchItems(browseToken, 'laptop');
-
-// Get category information (Taxonomy API)  
-const taxonomyToken = await getTaxonomyApiToken();
-const categories = await getCategoryTree(taxonomyToken);
-
-// List an item for sale (Trading API)
-const tradingToken = await getTradingApiToken('your-app-id');
-const listing = await addItem(tradingToken, itemData);
-```
-
-## 🔐 Security Best Practices
-
-### 1. Environment Variables
-
-**Never hardcode credentials in your source code.** Always use environment variables:
-
-```javascript
-// ❌ NEVER do this
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: 'hardcoded_client_id',
-  clientSecret: 'hardcoded_secret'
-});
-
-// ✅ Always do this
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: process.env.EBAY_CLIENT_ID,
-  clientSecret: process.env.EBAY_CLIENT_SECRET,
+// Or via configuration
+const manager = new UserAccessToken_AuthorizationCodeManager({
   masterKey: process.env.EBAY_MASTER_KEY
 });
 ```
 
-### 2. Master Key Security
+### File Permissions
 
-- **Use a strong, unique master key** for each environment
-- **Never commit master keys** to version control
-- **Rotate keys regularly** in production environments
-- **Use different keys** for development, staging, and production
+Automatically sets restrictive permissions on token files:
+- **SQLite database**: `0600` (owner read/write only)
+- **JSON files**: `0600` (owner read/write only)
 
-```bash
-# Generate a secure master key
-openssl rand -hex 32
-```
+---
 
-### 3. File Permissions
+## 🌐 Environment Support
 
-The library automatically sets secure file permissions (600 - owner read/write only) for token files. For database files, ensure appropriate directory permissions:
+### Production vs Sandbox
 
 ```bash
-# Linux/macOS
-chmod 700 ./database/
-chmod 600 ./database/*.sqlite
+# Production (default)
+EBAY_ENVIRONMENT=PRODUCTION
 
-# Windows (PowerShell)  
-icacls "./database" /grant:r "$env:USERNAME:(OI)(CI)F" /inheritance:r
+# Sandbox
+EBAY_ENVIRONMENT=SANDBOX
 ```
 
-**✨ New in v1.0.2:** Token files now automatically get `chmod 600` permissions for enhanced security.
+The library automatically uses appropriate API endpoints:
+- **Production**: `https://api.ebay.com/identity/v1/oauth2/token`
+- **Sandbox**: `https://api.sandbox.ebay.com/identity/v1/oauth2/token`
 
-## 📚 API Reference
+---
 
-### Core Functions
+## 🔄 Token Lifecycle Management
 
-#### `getBrowseApiToken(options?)`
+### Refresh Token Requirements
 
-Get Application Access Token for eBay Browse API (public data access).
+⚠️ **Important**: Refresh tokens cannot be generated programmatically and must be obtained through manual browser-based OAuth flow.
 
-```javascript
-const token = await getBrowseApiToken({
-  clientId: 'custom_client_id',
-  clientSecret: 'custom_secret'
-});
-```
+### Automatic Features
 
-#### `getTaxonomyApiToken(options?)`
+- **Token Refresh**: Automatically refreshes expired access tokens
+- **Conflict Resolution**: SSOT prevents multiple instances from conflicting
+- **Error Recovery**: Automatic invalid_grant recovery using latest tokens
+- **Cache Management**: Intelligent cache invalidation and updates
 
-Get Application Access Token for eBay Taxonomy API (category and classification data).
+### Manual Refresh Token Setup
 
-```javascript
-const token = await getTaxonomyApiToken({
-  clientId: 'custom_client_id',
-  clientSecret: 'custom_secret',
-  scope: 'https://api.ebay.com/oauth/api_scope'
-});
-```
-
-#### `getTradingApiToken(appId?, options?)`
-
-Get User Access Token for eBay Trading API (private operations).
-
-```javascript
-// App ID is optional - uses EBAY_CLIENT_ID if not provided
-const token = await getTradingApiToken('your-app-id', {
-  clientId: 'custom_client_id',
-  clientSecret: 'custom_secret'
-});
-
-// Or use without App ID
-const token = await getTradingApiToken();
-```
-
-### NEW: Token Information Functions
-
-#### `getTokenInfo(appId?)`
-
-Get comprehensive token information including metadata.
-
-```javascript
-const tokenInfo = await getTokenInfo('your-app-id');
-// Returns:
-// {
-//   access_token: "v^1.1#i^1#p^3#r^1...",
-//   refresh_token: "v^1.1#i^1#p^3#r^1...", 
-//   expires_at: Date,
-//   account_name: "your-account",
-//   token_type: "User Access Token",
-//   access_token_updated_date: Date,
-//   expires_in: 7200,
-//   refresh_token_updated_date: Date,
-//   refresh_token_expires_in: 47304000
-// }
-```
-
-#### `getTokenExpiration(appId?)`
-
-Get token expiration information.
-
-```javascript
-const expiration = await getTokenExpiration('your-app-id');
-// Returns:
-// {
-//   expiresAt: Date,
-//   expiresIn: 3600, // seconds remaining
-//   isExpired: false,
-//   percentageRemaining: 50.0 // 0-100
-// }
-```
-
-#### `getAccountName(appId?)`
-
-Get the account name associated with a token.
-
-```javascript
-const accountName = await getAccountName('your-app-id');
-// Returns: "your-ebay-account-name"
-```
-
-### Classes
-
-#### `UserAccessToken_AuthorizationCodeManager`
-
-Manages User Access Tokens with SQLite database storage.
-
-**Constructor Options:**
-- `clientId` (required): eBay Client ID
-- `clientSecret` (required): eBay Client Secret
-- `masterKey` (required): Encryption master key
-- `databasePath`: SQLite database file path
-- `defaultAppId`: Default eBay App ID
-- `encryptionEnabled`: Enable/disable encryption (default: true)
-
-**Methods:**
-- `getUserAccessTokenByAppId(appId)`: Get token by App ID
-- `getUserAccessToken(accountName)`: Get token by account name
-- `saveUserAccessToken(accountName, tokenData)`: Save token data
-- `checkRefreshTokenValidity()`: Check if refresh token is valid
-
-#### `LocalSharedTokenManager`
-
-Manages tokens with encrypted file storage.
-
-**Constructor Options:**
-- `masterKey` (required): Encryption master key
-- `tokenFilePath`: Token file path (default: OS-specific)
-
-**Methods:**
-- `getToken(appId)`: Get token by App ID
-- `saveToken(appId, tokenData)`: Save token data
-- `checkRefreshTokenValidity()`: Check if refresh token is valid
-
-#### `ApplicationAccessToken_ClientCredentialsManager`
-
-Manages Application Access Tokens for Browse API.
-
-**Constructor Options:**
-- `clientId` (required): eBay Client ID
-- `clientSecret` (required): eBay Client Secret
-- `scope`: OAuth scope (default: basic API access)
-
-**Methods:**
-- `getApplicationAccessToken()`: Get Application Access Token
-
-## 🌍 Cross-Project Token Sharing
-
-This library supports sharing tokens across multiple applications:
-
-### 1. File-Based Sharing (Recommended)
-
-```javascript
-// Project A
-const tokenManager = new LocalSharedTokenManager({
-  masterKey: 'shared_master_key_across_projects',
-  tokenFilePath: '/shared/location/ebay-tokens.encrypted.json'
-});
-
-// Project B (different application)
-const tokenManager = new LocalSharedTokenManager({
-  masterKey: 'shared_master_key_across_projects', // Same key
-  tokenFilePath: '/shared/location/ebay-tokens.encrypted.json' // Same file
-});
-```
-
-### 2. Environment-Based Configuration
+1. Use eBay's OAuth flow in browser to get refresh token
+2. Set via environment variable or API:
 
 ```bash
-# Shared across all projects
-EBAY_MASTER_KEY=shared_secure_key_for_all_projects
-EBAY_TOKEN_FILE_PATH=/shared/location/ebay-tokens.encrypted.json
+# Via environment
+EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
+
+# Via API
+await manager.setRefreshToken('your_refresh_token', 'account_name');
 ```
 
-## 🔧 Advanced Configuration
+---
 
-### Custom Token Storage Location
+## 🛠️ Advanced Configuration
+
+### Database Configuration
 
 ```javascript
-// Windows
-const tokenManager = new LocalSharedTokenManager({
-  masterKey: process.env.EBAY_MASTER_KEY,
-  tokenFilePath: 'C:\\ProgramData\\YourApp\\tokens\\ebay-tokens.encrypted.json'
-});
-
-// Linux/macOS
-const tokenManager = new LocalSharedTokenManager({
-  masterKey: process.env.EBAY_MASTER_KEY,
-  tokenFilePath: '/var/lib/yourapp/tokens/ebay-tokens.encrypted.json'
+const manager = new UserAccessToken_AuthorizationCodeManager({
+  databasePath: './custom/path/tokens.sqlite',
+  useDatabase: true  // Enable SQLite storage
 });
 ```
 
-### Custom Database Schema
+### File Storage Configuration
 
 ```javascript
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  clientId: process.env.EBAY_CLIENT_ID,
-  clientSecret: process.env.EBAY_CLIENT_SECRET,
-  masterKey: process.env.EBAY_MASTER_KEY,
-  databasePath: './custom/path/tokens.db'
+const manager = new UserAccessToken_AuthorizationCodeManager({
+  tokenFilePath: './custom/tokens.json',  // Local JSON storage
+  masterKey: 'your_encryption_key'
 });
 ```
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### 1. "masterKey is required" Error
-
-**Solution:** Set the `EBAY_MASTER_KEY` environment variable or pass it as an option:
+### SSOT Configuration
 
 ```javascript
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  // ... other options
-  masterKey: 'your_secure_master_key'
+const manager = new UserAccessToken_AuthorizationCodeManager({
+  ssotJsonPath: '/shared/secure/tokens.json',  // Centralized storage
+  tokenNamespace: 'production-app',           // Namespace for isolation
+  masterKey: 'your_shared_encryption_key'     // Shared across instances
 });
 ```
 
-#### 2. "No token found" Error
+---
 
-**Solution:** Ensure you have valid tokens stored. For User Access Tokens, you need to obtain them through eBay's OAuth flow first.
+## 📊 Performance Optimization
 
-#### 3. Database Lock Issues
-
-**Solution:** The library handles SQLite WAL mode automatically. If you encounter lock issues:
+### Memory Caching
 
 ```javascript
-// Check if another process is using the database
-const tokenManager = new UserAccessToken_AuthorizationCodeManager({
-  // ... options
-  databasePath: './different/path/tokens.db' // Use different database
-});
+// Automatic memory caching with TTL
+const token = await manager.getUserAccessTokenByAppId('app_id');
+// Subsequent calls within expiry are served from memory (~1ms)
 ```
 
-#### 4. Token Refresh Failures
-
-**Solution:** Check your eBay API credentials and refresh token validity:
+### Batch Operations
 
 ```javascript
-const isValid = await checkRefreshTokenValidity('your-app-id');
-if (!isValid) {
-  console.log('Refresh token expired, need to re-authenticate');
-  // Re-run eBay OAuth flow
+// Multiple token requests are optimized
+const [token1, token2, token3] = await Promise.all([
+  manager.getUserAccessTokenByAppId('app1'),
+  manager.getUserAccessTokenByAppId('app2'),
+  manager.getUserAccessTokenByAppId('app3')
+]);
+```
+
+---
+
+## 🔍 Monitoring & Debugging
+
+### Logging
+
+The library provides comprehensive logging:
+
+```javascript
+// Success operations
+✅ Access token refreshed successfully for App ID abc123 (user@example.com)
+🔄 Auto-saved to encrypted JSON for app: abc123
+🌟 Centralized token provider (SSOT) enabled for multi-package coordination
+
+// Error conditions
+🚨 Failed to refresh access token for App ID abc123: invalid_grant
+⚠️ Invalid grant detected for App ID abc123, attempting recovery from SSOT...
+🔄 Retrying refresh with latest token from SSOT (version: 5)
+```
+
+### Error Handling
+
+```javascript
+try {
+  const token = await manager.getUserAccessTokenByAppId('app_id');
+} catch (error) {
+  if (error.message.includes('invalid_grant')) {
+    // Handle expired refresh token
+    console.log('Refresh token expired, manual refresh required');
+  } else if (error.message.includes('No token found')) {
+    // Handle missing token
+    console.log('No token found, initial setup required');
+  }
 }
 ```
 
-### 5. Memory Cache Issues
+---
 
-**Solution:** The library automatically handles cache key consistency. If you encounter cache-related issues:
+## 🧪 Testing
 
-```javascript
-// Clear application cache and restart
-delete require.cache[require.resolve('ebay-oauth-token-manager')];
-```
-
-### 6. High-Load Token Expiry Edge Cases
-
-**Solution:** For high-load environments where tokens might expire during processing, use the expiry buffer:
+Run the test suite:
 
 ```bash
-# Add 5-minute buffer for token expiry detection
-EBAY_JSON_EXPIRY_SKEW_MS=300000
+npm test
+npm run lint
 ```
 
-### Debug Mode
+### Test Coverage
 
-Enable debug logging with environment variables:
+- ✅ Token encryption/decryption
+- ✅ Multi-layer caching
+- ✅ SSOT coordination and locking
+- ✅ Automatic refresh and recovery
+- ✅ Database operations
+- ✅ File I/O with proper permissions
 
-```bash
-# Enable verbose logging (shows non-sensitive information only)
-EBAY_LOG_VERBOSE=true
+---
 
-# Set JSON token expiry buffer (optional, for high-load environments)
-EBAY_JSON_EXPIRY_SKEW_MS=300000  # 5 minutes buffer for token expiry edge cases
-```
+## 🔧 Troubleshooting
 
+### Common Issues
+
+#### "No token found for App ID"
 ```javascript
-// Application-level debugging (sensitive information is automatically hidden)
-console.log('🔍 Token manager debug info:', {
-  databasePath: tokenManager.dbPath,
-  encryptionEnabled: tokenManager.encryptionEnabled,
-  // Note: Client IDs and auth headers are NOT logged for security
-});
+// Solution: Set initial refresh token
+await manager.setRefreshToken('your_refresh_token', 'account_name');
 ```
 
-**🔒 Security Enhancement:** Sensitive information like client IDs and authorization headers are automatically excluded from logs to protect credentials in production environments.
+#### "invalid_grant" errors
+```javascript
+// With SSOT enabled, automatic recovery is attempted
+// Without SSOT, manual refresh token update required
+```
+
+#### Permission denied on token files
+```bash
+# Ensure proper file permissions
+chmod 600 ./database/ebay_tokens.sqlite
+chmod 600 ./tokens/ebay_tokens.json
+```
+
+#### SSOT coordination issues
+```javascript
+// Ensure all instances use same masterKey and ssotJsonPath
+const config = {
+  masterKey: process.env.EBAY_MASTER_KEY,  // Same across instances
+  ssotJsonPath: '/shared/tokens.json'      // Shared location
+};
+```
+
+---
+
+## 📋 Requirements
+
+- **Node.js**: ≥18.0.0
+- **Dependencies**: `axios`, `sqlite3`, `dotenv`
+- **File System**: Write permissions for token storage
+- **Network**: HTTPS access to eBay APIs
+
+---
+
+## 📖 Related Documentation
+
+- [eBay Developer Program](https://developer.ebay.com/)
+- [eBay OAuth 2.0 Documentation](https://developer.ebay.com/api-docs/static/oauth-tokens.html)
+- [eBay API Scopes](https://developer.ebay.com/api-docs/static/oauth-scopes.html)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please ensure:
+
+1. **Security**: No credentials or sensitive data in commits
+2. **Testing**: Add tests for new features
+3. **Documentation**: Update README for API changes
+4. **Lint**: Run `npm run lint` before submitting
+
+---
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+---
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/ebay-oauth-token-manager/issues)
-- **Documentation**: [GitHub Wiki](https://github.com/your-org/ebay-oauth-token-manager/wiki)
-- **eBay Developer Program**: [developer.ebay.com](https://developer.ebay.com)
+For issues and questions:
 
-## 🚨 eBay OAuth Token Generation Limitations
+- **GitHub Issues**: [Report bugs or request features](https://github.com/your-repo/issues)
+- **eBay Developer Support**: For eBay API-specific questions
+- **Security Issues**: Please report privately to maintain security
 
-### **IMPORTANT: Refresh Token Cannot Be Generated via API**
+---
 
-**eBay OAuth Specification:**
-- **Refresh tokens CANNOT be generated through API calls**
-- **Manual browser-based authentication flow is REQUIRED for initial token generation**
-- **Only access tokens can be refreshed using existing refresh tokens**
-
-**Impact on Development:**
-1. **Initial Setup**: Requires manual eBay OAuth consent flow through browser
-2. **Token Management**: This library can only refresh existing tokens, not create new ones
-3. **Production Deployment**: Valid refresh tokens must be obtained before deployment
-
-**Typical Workflow:**
-```javascript
-// Step 1: Manual browser authentication (one-time setup)
-// Visit eBay OAuth consent URL and obtain initial tokens
-
-// Step 2: Use this library for automatic token management
-const token = await getTradingApiToken(); // Refreshes automatically if needed
-```
-
-**Note**: This is an eBay API limitation, not a library limitation.
-
-## 🎯 Development Best Practices
-
-### 1. API Function Selection
-
-**✅ Use API-specific functions for clarity:**
-```javascript
-// ✅ Clear intent
-const taxonomyToken = await getTaxonomyApiToken();    // For category APIs
-const browseToken = await getBrowseApiToken();        // For search APIs  
-const tradingToken = await getTradingApiToken();      // For user APIs
-
-// ❌ Generic approach (harder to understand)
-const token = await getApplicationAccessToken();      // Which API is this for?
-```
-
-### 2. Error Handling Patterns
-
-**✅ Handle token-specific errors:**
-```javascript
-try {
-  const token = await getTradingApiToken('your-app-id');
-  // Use token for API calls
-} catch (error) {
-  if (error.message.includes('refresh token expired')) {
-    // Handle expired refresh token - redirect to OAuth flow
-    window.location.href = '/oauth/ebay';
-  } else if (error.message.includes('No token found')) {
-    // Handle missing token - first-time setup
-    console.log('First-time setup required');
-  } else {
-    // Handle other errors
-    console.error('Token error:', error.message);
-  }
-}
-```
-
-### 3. Performance Optimization
-
-**✅ Leverage caching effectively:**
-```javascript
-// ✅ Good: Token cached automatically
-const token1 = await getTradingApiToken('app1');  // Database lookup
-const token2 = await getTradingApiToken('app1');  // Memory cache (fast!)
-
-// ✅ Good: Pre-fetch tokens for better UX
-async function initializeApp() {
-  await getTradingApiToken();  // Pre-loads and caches token
-}
-```
-
-### 4. Multi-Environment Setup
-
-**✅ Environment-specific configuration:**
-```javascript
-// config/development.js
-export const config = {
-  clientId: process.env.EBAY_CLIENT_ID_DEV,
-  clientSecret: process.env.EBAY_CLIENT_SECRET_DEV,
-  masterKey: process.env.EBAY_MASTER_KEY_DEV,
-  environment: 'SANDBOX'
-};
-
-// config/production.js  
-export const config = {
-  clientId: process.env.EBAY_CLIENT_ID_PROD,
-  clientSecret: process.env.EBAY_CLIENT_SECRET_PROD,
-  masterKey: process.env.EBAY_MASTER_KEY_PROD,
-  environment: 'PRODUCTION'
-};
-```
-
-### 5. Testing Strategies
-
-**✅ Test token lifecycle:**
-```javascript
-import { getTaxonomyApiToken, checkRefreshTokenValidity } from 'ebay-oauth-token-manager';
-
-describe('eBay Token Management', () => {
-  test('should get valid taxonomy token', async () => {
-    const token = await getTaxonomyApiToken();
-    expect(token).toBeDefined();
-    expect(typeof token).toBe('string');
-    expect(token.length).toBeGreaterThan(50);
-  });
-
-  test('should validate refresh token', async () => {
-    const isValid = await checkRefreshTokenValidity();
-    expect(typeof isValid).toBe('boolean');
-  });
-});
-```
-
-### 6. Monitoring & Observability
-
-**✅ Add token usage monitoring:**
-```javascript
-import { getTradingApiToken } from 'ebay-oauth-token-manager';
-
-async function getTokenWithMonitoring(appId) {
-  const startTime = Date.now();
-  try {
-    const token = await getTradingApiToken(appId);
-    const duration = Date.now() - startTime;
-    
-    // Log performance metrics
-    console.log(`Token retrieved in ${duration}ms for app ${appId}`);
-    
-    return token;
-  } catch (error) {
-    console.error(`Token retrieval failed for app ${appId}:`, error.message);
-    throw error;
-  }
-}
-```
-
-### 7. Security Considerations
-
-**✅ Protect sensitive data:**
-```javascript
-// ✅ Good: Log safe information only
-console.log('Token retrieved for app:', appId);
-console.log('Token length:', token.length);
-
-// ❌ NEVER log actual tokens or sensitive credentials
-console.log('Token:', token); // Security risk!
-console.log('Client ID:', clientId); // Security risk!
-
-// ✅ The library automatically hides sensitive info from logs
-// Set EBAY_LOG_VERBOSE=true only in secure development environments
-```
-
-**✅ Use environment variables:**
-```bash
-# .env.local (never commit)
-EBAY_CLIENT_ID=your_actual_client_id
-EBAY_CLIENT_SECRET=your_actual_secret
-EBAY_MASTER_KEY=your_secure_master_key
-
-# .env.example (safe to commit)
-EBAY_CLIENT_ID=your_ebay_client_id_here
-EBAY_CLIENT_SECRET=your_ebay_client_secret_here
-EBAY_MASTER_KEY=generate_secure_key_with_openssl_rand_hex_32
-```
-
-## 📋 Changelog
-
-### [v1.0.2] - 2025-08-23
-
-#### 🔧 Internal Improvements & Bug Fixes
-- **Fixed App ID delegation in `checkRefreshTokenValidity()`**
-  - Now properly passes App ID parameter to underlying token managers
-  - Added fallback mechanism for better reliability
-- **Fixed memory cache key inconsistencies**
-  - Unified cache key format across all methods
-  - Added immediate cache update after token refresh for better performance
-- **Enhanced security and logging**
-  - Removed sensitive information (Client IDs, auth headers) from default logs
-  - Added `EBAY_LOG_VERBOSE` environment variable for optional detailed logging
-  - Automatic file permission setting (chmod 600) for token files
-- **Added token expiry buffer configuration**
-  - New `EBAY_JSON_EXPIRY_SKEW_MS` environment variable for high-load environments
-  - Helps prevent edge cases in token expiry detection
-
-#### ✅ Compatibility
-- **100% backward compatible** - all existing code continues to work
-- **No breaking changes** to public APIs
-- **Improved reliability** for existing functionality
-
-### [v1.0.1] - 2025-08-04
-
-#### 🐛 Bug Fixes
-- **Fixed encryption/decryption errors** in `UserAccessToken_AuthorizationCodeManager`
-  - Replaced non-existent `crypto.createCipherGCM()` with `crypto.createCipheriv('aes-256-gcm', key, iv)`
-  - Replaced non-existent `crypto.createDecipherGCM()` with `crypto.createDecipheriv('aes-256-gcm', key, iv)`
-  - This resolves the "crypto.createCipherGCM is not a function" error
-  - Affected files: `src/UserAccessToken_AuthorizationCodeManager.js` (lines 605, 650)
-
-#### 🎯 Impact
-- **Before**: Token encryption failed with "Failed to encrypt token: crypto.createCipherGCM is not a function"
-- **After**: Token encryption/decryption works correctly with AES-256-GCM authenticated encryption
-
-#### 🔧 Technical Details
-The Node.js crypto module uses `createCipheriv()` and `createDecipheriv()` for all cipher modes, including GCM. The fix corrects the function names while maintaining the same encryption algorithm (AES-256-GCM) and security level.
-
-```javascript
-// ❌ Incorrect (causing error)
-const cipher = crypto.createCipherGCM('aes-256-gcm', this.encryptionKey);
-
-// ✅ Correct
-const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-```
-
-### [v1.0.0] - Initial Release
-- Automatic dual storage (SQLite + encrypted JSON)
-- Memory caching for high performance
-- Support for Browse API, Taxonomy API, and Trading API tokens
-- AES-256-GCM encryption for secure token storage
-- Automatic token refresh capabilities
-
-## 🔗 Related Projects
-
-- [eBay SDK for Node.js](https://github.com/ebay/ebay-nodejs-sdk)
-- [eBay API Documentation](https://developer.ebay.com/api-docs/)
+*Built with ❤️ for the eBay developer community*

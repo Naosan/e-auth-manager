@@ -3,9 +3,9 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import crypto from 'crypto';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import axios from 'axios';
 import LocalSharedTokenManager from './LocalSharedTokenManager.js';
+import FileJsonTokenProvider from './providers/FileJsonTokenProvider.js';
 
 class UserAccessToken_AuthorizationCodeManager {
   constructor(options = {}) {
@@ -29,6 +29,9 @@ class UserAccessToken_AuthorizationCodeManager {
     // Default App ID for database searches (prioritized over clientId)
     this.defaultAppId = options.defaultAppId || this.clientId;
     
+    // Initial Refresh Token for first-time setup
+    this.initialRefreshToken = options.initialRefreshToken;
+    
     // Database connection (lazy initialization)
     this.db = null;
     
@@ -48,14 +51,96 @@ class UserAccessToken_AuthorizationCodeManager {
     // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
     // This provides fast JSON access and automatic backup
     try {
-      this.fileTokenManager = new LocalSharedTokenManager({
-        masterKey: options.masterKey || 'default-secure-key-for-local-storage',
-        tokenFilePath: options.tokenFilePath
-      });
+      this.fileTokenManager = options.masterKey
+        ? new LocalSharedTokenManager({
+          masterKey: options.masterKey,
+          tokenFilePath: options.tokenFilePath
+        })
+        : null;
       console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
     } catch (error) {
       console.warn('⚠️ Could not initialize file token manager, using database only:', error.message);
       this.fileTokenManager = null;
+    }
+
+    // Centralized JSON (SSOT) Provider (enabled if specified)
+    this.tokenProvider = options.tokenProvider || (
+      options.ssotJsonPath && options.masterKey
+        ? new FileJsonTokenProvider({
+          filePath: options.ssotJsonPath,
+          masterKey: options.masterKey,
+          namespace: options.tokenNamespace || 'ebay-oauth'
+        })
+        : null
+    );
+    
+    if (this.tokenProvider) {
+      console.log('🌟 Centralized token provider (SSOT) enabled for multi-package coordination');
+    }
+    
+    // Auto-initialize refresh token if provided
+    if (this.initialRefreshToken) {
+      this.initializeRefreshToken();
+    }
+  }
+
+  /**
+   * Set refresh token for first-time setup
+   * @param {string} refreshToken - The refresh token obtained from manual OAuth flow
+   * @param {string} accountName - Account name to associate with the token (default: 'default')
+   * @param {string} appId - App ID to associate with the token (default: this.defaultAppId)
+   */
+  async setRefreshToken(refreshToken, accountName = 'default', appId = null) {
+    try {
+      console.log(`🔑 Setting initial refresh token for account: ${accountName}`);
+      
+      if (!refreshToken) {
+        throw new Error('Refresh token is required');
+      }
+
+      const now = new Date().toISOString();
+      const actualAppId = appId || this.defaultAppId;
+      
+      // Create minimal token data with expired access token to force immediate refresh
+      const tokenData = {
+        accessToken: 'initial_placeholder_token',
+        refreshToken: refreshToken,
+        accessTokenUpdatedDate: '1970-01-01T00:00:00.000Z', // Force expiration
+        refreshTokenUpdatedDate: now,
+        expiresIn: 1, // 1 second - forces immediate refresh
+        refreshTokenExpiresIn: 47304000, // 1.5 years default
+        tokenType: 'Bearer',
+        appId: actualAppId
+      };
+
+      await this.saveUserAccessToken(accountName, tokenData);
+      if (this.tokenProvider) {
+        await this.tokenProvider.set(actualAppId, refreshToken, 1);
+      }
+      console.log(`✅ Initial refresh token set successfully for ${accountName} (App ID: ${actualAppId})`);
+      console.log('💡 Access token will be automatically obtained on first use');
+      
+    } catch (error) {
+      console.error('🚨 Failed to set refresh token:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize refresh token from constructor options (called automatically)
+   */
+  async initializeRefreshToken() {
+    try {
+      if (!this.initialRefreshToken) {
+        return;
+      }
+      
+      console.log('🚀 Auto-initializing refresh token from environment...');
+      await this.setRefreshToken(this.initialRefreshToken, 'default', this.defaultAppId);
+      
+    } catch (error) {
+      console.warn('⚠️ Failed to auto-initialize refresh token:', error.message);
+      // Don't throw error - this is a convenience feature, not critical
     }
   }
 
@@ -170,7 +255,7 @@ class UserAccessToken_AuthorizationCodeManager {
       if (!tokenData) {
         // Fallback: Try to get by default account name if App ID matches
         if (appId === this.clientId) {
-          console.log(`🔄 App ID matches client ID, trying default account fallback...`);
+          console.log('🔄 App ID matches client ID, trying default account fallback...');
           return await this.getUserAccessToken('default');
         }
         throw new Error(`No token found for App ID: ${appId}`);
@@ -341,7 +426,10 @@ class UserAccessToken_AuthorizationCodeManager {
               refresh_token = ?, 
               access_token_updated_date = ?, 
               expires_in = ?,
+              refresh_token_updated_date = ?,
+              refresh_token_expires_in = ?,
               token_type = ?,
+              app_id = ?,
               updated_at = ?
           WHERE account_name = ?
         `, [
@@ -349,7 +437,10 @@ class UserAccessToken_AuthorizationCodeManager {
           encryptedRefreshToken,
           tokenData.accessTokenUpdatedDate || now,
           tokenData.expiresIn,
+          tokenData.refreshTokenUpdatedDate || now,
+          tokenData.refreshTokenExpiresIn || 47304000,
           tokenData.tokenType || 'Bearer',
+          tokenData.appId || this.defaultAppId,
           now,
           accountName
         ]);
@@ -398,7 +489,7 @@ class UserAccessToken_AuthorizationCodeManager {
           });
           console.log(`🔄 Auto-saved to encrypted JSON for app: ${appId}`);
         } catch (fileError) {
-          console.warn(`⚠️ Could not save to JSON file:`, fileError.message);
+          console.warn('⚠️ Could not save to JSON file:', fileError.message);
           // Don't throw error - database save succeeded, file save is secondary
         }
       }
@@ -415,32 +506,56 @@ class UserAccessToken_AuthorizationCodeManager {
     try {
       console.log(`🔄 Refreshing access token for App ID: ${appId}`);
 
-      // Decrypt refresh token
-      const refreshToken = this.decryptToken(tokenData.refresh_token);
+      // 1) Get latest refresh token from centralized provider (SSOT) if available
+      let rtRecord = null;
+      if (this.tokenProvider) {
+        rtRecord = await this.tokenProvider.get(appId);
+      }
+      const refreshToken = rtRecord?.refreshToken || this.decryptToken(tokenData.refresh_token);
 
-      // Prepare OAuth request
+      // Prepare OAuth request function
       const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
       const now = new Date().toISOString();
 
-      let requestBody = `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`;
-      
-      // Add scope if provided
-      if (options.scope) {
-        requestBody += `&scope=${encodeURIComponent(options.scope)}`;
-      }
-
-      const response = await axios.post(
-        this.tokenUrl,
-        requestBody,
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${auth}`,
-          }
+      const doRefresh = async (rt) => {
+        let requestBody = `grant_type=refresh_token&refresh_token=${encodeURIComponent(rt)}`;
+        
+        // Add scope if provided
+        if (options.scope) {
+          requestBody += `&scope=${encodeURIComponent(options.scope)}`;
         }
-      );
 
-      const data = response.data;
+        return await axios.post(
+          this.tokenUrl,
+          requestBody,
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${auth}`,
+            }
+          }
+        );
+      };
+
+      let data;
+      if (this.tokenProvider) {
+        // Use centralized provider with distributed locking
+        data = await this.tokenProvider.withLock(appId, async () => {
+          const latest = await this.tokenProvider.get(appId);
+          const rtToUse = latest?.refreshToken || refreshToken;
+          const res = await doRefresh(rtToUse);
+          const body = res.data;
+          
+          // eBay returns new refresh_token only sometimes - increment version when it does
+          const newRT = body.refresh_token || rtToUse;
+          const newVersion = (latest?.version ?? rtRecord?.version ?? 0) + (body.refresh_token ? 1 : 0);
+          await this.tokenProvider.set(appId, newRT, newVersion);
+          return body;
+        });
+      } else {
+        // Legacy mode - direct refresh without provider
+        data = (await doRefresh(refreshToken)).data;
+      }
 
       // Update token data in database by account name (since saveUserAccessToken uses account_name)
       await this.saveUserAccessToken(tokenData.account_name, {
@@ -450,7 +565,8 @@ class UserAccessToken_AuthorizationCodeManager {
         refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
         expiresIn: data.expires_in,
         refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
-        tokenType: data.token_type || 'Bearer'
+        tokenType: data.token_type || 'Bearer',
+        appId: appId
       });
 
       console.log(`✅ Access token refreshed successfully for App ID ${appId} (${tokenData.account_name})`);
@@ -466,6 +582,67 @@ class UserAccessToken_AuthorizationCodeManager {
       
       return data;
     } catch (error) {
+      // Handle invalid_grant with automatic recovery using centralized provider
+      if (this.tokenProvider && error.response?.data?.error === 'invalid_grant') {
+        console.warn(`⚠️ Invalid grant detected for App ID ${appId}, attempting recovery from SSOT...`);
+        
+        // Clear local caches to force fresh reads
+        this.memoryCache.delete(`token_appid_${appId}`);
+        this.cacheExpiration.delete(`token_appid_${appId}`);
+        
+        try {
+          const latest = await this.tokenProvider.get(appId);
+          if (latest?.refreshToken) {
+            console.log(`🔄 Retrying refresh with latest token from SSOT (version: ${latest.version})`);
+            
+            const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+            let requestBody = `grant_type=refresh_token&refresh_token=${encodeURIComponent(latest.refreshToken)}`;
+            
+            if (options.scope) {
+              requestBody += `&scope=${encodeURIComponent(options.scope)}`;
+            }
+
+            const response = await axios.post(
+              this.tokenUrl,
+              requestBody,
+              {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Authorization': `Basic ${auth}`,
+                }
+              }
+            );
+
+            const data = response.data;
+            const now = new Date().toISOString();
+            
+            // Update centralized provider
+            const newRT = data.refresh_token || latest.refreshToken;
+            const newVersion = (latest.version ?? 0) + (data.refresh_token ? 1 : 0);
+            await this.tokenProvider.set(appId, newRT, newVersion);
+
+            // Update local database
+            await this.saveUserAccessToken(tokenData.account_name, {
+              accessToken: data.access_token,
+              refreshToken: newRT,
+              accessTokenUpdatedDate: now,
+              refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
+              expiresIn: data.expires_in,
+              refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+              tokenType: data.token_type || 'Bearer',
+              appId: appId
+            });
+
+            console.log(`✅ Successfully recovered from invalid_grant for App ID ${appId}`);
+            this.updateMemoryCache(`token_appid_${appId}`, data.access_token, data.expires_in);
+            return data;
+          }
+        } catch (recoveryError) {
+          console.error(`🚨 Failed to recover from invalid_grant: ${recoveryError.message}`);
+          throw new Error(`eBay token refresh failed after SSOT recovery attempt: ${recoveryError.response?.data?.error_description || recoveryError.message}`);
+        }
+      }
+
       console.error(`🚨 Failed to refresh access token for App ID ${appId}:`, error.message);
       if (error.response?.data) {
         console.error('eBay API error response:', error.response.data);
@@ -569,7 +746,9 @@ class UserAccessToken_AuthorizationCodeManager {
    * Update memory cache
    */
   updateMemoryCache(cacheKey, token, expiresIn) {
-    if (!token || !expiresIn) return;
+    if (!token || !expiresIn) {
+      return;
+    }
     // 実効期限の60秒前に失効扱い（従来挙動は維持しつつ安全側）
     const ttl = Math.max(0, (expiresIn - 60) * 1000);
     this.memoryCache.set(cacheKey, token);
@@ -651,7 +830,7 @@ class UserAccessToken_AuthorizationCodeManager {
       const encrypted = Buffer.from(encryptedBase64, 'base64');
       
       const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-      decipher.setAuthTag(Buffer.from(authTagBase64, 'base64'));
+      decipher.setAuthTag(authTag);
       decipher.setAAD(Buffer.from('ebay-token-data'));
       
       const decrypted = Buffer.concat([

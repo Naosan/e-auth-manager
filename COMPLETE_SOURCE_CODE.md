@@ -6,12 +6,17 @@ This is a comprehensive Node.js library for managing eBay OAuth 2.0 tokens with 
 - **Performance Optimized**: 4-layer token retrieval system
 - **API-Specific Functions**: Dedicated token managers for different eBay APIs
 - **Security First**: AES-256-GCM encryption for database, AES-256-CBC for file storage
+- **Refresh Token Input**: Environment variable support for manual refresh token initialization
+- **🌟 NEW: Centralized Token Management (SSOT)**: Provider abstraction pattern for multi-package coordination
+- **🛡️ NEW: Automatic Invalid Grant Recovery**: Smart error handling with distributed locking
 
 ## Architecture
 1. **UserAccessToken_AuthorizationCodeManager** - Manages User Access Tokens for Trading API
 2. **ApplicationAccessToken_ClientCredentialsManager** - Manages Application Access Tokens for Browse API
 3. **LocalSharedTokenManager** - File-based cross-project token sharing with encryption
-4. **4-Layer Token Retrieval**: Memory → JSON → Database → eBay API
+4. **🌟 TokenProvider** - Abstract base class for centralized token management
+5. **🌟 FileJsonTokenProvider** - SSOT implementation with encryption and distributed locking
+6. **5-Layer Token Retrieval**: Memory → JSON → Database → SSOT → eBay API
 
 ## eBay Token Types (Officially Supported)
 
@@ -31,260 +36,593 @@ This is a comprehensive Node.js library for managing eBay OAuth 2.0 tokens with 
 
 ---
 
-## src/index.js - Main Entry Point
+## src/config.js - Configuration Management
 
 ```javascript
-// @your-org/ebay-oauth-token-manager - Main Entry Point
-import LocalSharedTokenManager from './LocalSharedTokenManager.js';
-import ApplicationAccessToken_ClientCredentialsManager from './ApplicationAccessToken_ClientCredentialsManager.js';
-import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_AuthorizationCodeManager.js';
-import { loadConfig } from './config.js';
+// Configuration management for eBay OAuth Token Manager
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-// Load configuration
-const config = loadConfig();
+// Load environment variables
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
-let defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
-console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
-
-// Export classes for direct access if needed
-export {
-  LocalSharedTokenManager,
-  ApplicationAccessToken_ClientCredentialsManager,
-  UserAccessToken_AuthorizationCodeManager
-};
-
-// Export OAuth scope utilities for convenience
-export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType } from './ebayScopes.js';
-
-// ========================================
-// CORE TOKEN FUNCTIONS (API-SPECIFIC METHODS)
-// ========================================
+// Try to load .env from package root
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 /**
- * Browse API専用のApplication Access Token取得
- * 用途: 商品検索、商品詳細取得、公開データアクセス
- * OAuth2 Flow: Client Credentials Grant
- * @param {Object} options - Configuration options
- * @returns {Promise<string>} - Browse API用 Application Access Token
+ * Load configuration from environment variables and config files
+ * @param {Object} options - Override options
+ * @returns {Object} Configuration object
  */
-export const getBrowseApiToken = (appId, options = {}) => {
-  console.log('🔑 Getting Browse API Application Access Token');
+export function loadConfig(options = {}) {
+  // Validate required environment variables
+  const requiredVars = ['EBAY_CLIENT_ID', 'EBAY_CLIENT_SECRET'];
+  const missing = requiredVars.filter(varName => !process.env[varName] && !options[varName.toLowerCase().replace('ebay_', '')]);
   
-  // Handle case where first parameter is options object (backward compatibility)
-  if (typeof appId === 'object' && appId !== null) {
-    options = appId;
-    appId = undefined;
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}\nPlease set these variables or pass them as options.`);
   }
-  
-  if (!appId) {
-    // Use eBay official naming convention
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+
+  const config = {
+    // eBay API Credentials (REQUIRED)
+    clientId: options.clientId || process.env.EBAY_CLIENT_ID,
+    clientSecret: options.clientSecret || process.env.EBAY_CLIENT_SECRET,
+    
+    // Optional configuration
+    defaultAppId: options.defaultAppId || process.env.EBAY_CLIENT_ID,
+    environment: options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
+    
+    // Token storage configuration
+    useDatabase: options.useDatabase ?? (process.env.EBAY_USE_DATABASE_TOKENS === 'true'),
+    useLegacyFile: options.useLegacyFile ?? (process.env.EBAY_USE_LEGACY_TOKENS === 'true'),
+    
+    // Database configuration
+    databasePath: options.databasePath || process.env.EBAY_DATABASE_PATH || './database/ebay_tokens.sqlite',
+    
+    // File-based token storage configuration
+    tokenFilePath: options.tokenFilePath || process.env.EBAY_TOKEN_FILE_PATH,
+    
+    // Encryption configuration
+    encryptionEnabled: options.encryptionEnabled ?? true,
+    masterKey: options.masterKey || process.env.EBAY_MASTER_KEY,
+    
+    // API URLs (usually don't need to change)
+    tokenUrl: options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token',
+    scope: options.scope || 'https://api.ebay.com/oauth/api_scope',
+    
+    // Initial Refresh Token for first-time setup
+    initialRefreshToken: options.initialRefreshToken || process.env.EBAY_INITIAL_REFRESH_TOKEN,
+    
+    // 🌟 NEW: Centralized JSON (SSOT) configuration
+    ssotJsonPath: options.ssotJsonPath || process.env.OAUTH_SSOT_JSON,
+    tokenNamespace: options.tokenNamespace || process.env.TOKEN_NAMESPACE || 'ebay-oauth'
+  };
+
+  // Validate encryption key if encryption is enabled
+  if (config.encryptionEnabled && !config.masterKey) {
+    throw new Error('EBAY_MASTER_KEY environment variable is required when encryption is enabled. Set EBAY_MASTER_KEY or pass masterKey option.');
   }
-  const manager = new ApplicationAccessToken_ClientCredentialsManager({ ...config, ...options });
-  return manager.getApplicationAccessToken();
-};
+
+  return config;
+}
 
 /**
- * Taxonomy API専用のApplication Access Token取得
- * 用途: カテゴリ階層取得、商品属性情報、カテゴリツリー探索
- * OAuth2 Flow: Client Credentials Grant
- * API Endpoint: /commerce/taxonomy/v1/*
- * @param {Object} options - Configuration options
- * @returns {Promise<string>} - Taxonomy API用 Application Access Token
+ * Get default configuration for examples and testing
+ * @returns {Object} Example configuration
  */
-export const getTaxonomyApiToken = (options = {}) => {
-  console.log('🏷️ Getting Taxonomy API Application Access Token');
-  
-  const manager = new ApplicationAccessToken_ClientCredentialsManager({ 
-    ...config, 
-    ...options,
-    scope: options.scope || 'https://api.ebay.com/oauth/api_scope'
-  });
-  return manager.getApplicationAccessToken();
-};
+export function getExampleConfig() {
+  return {
+    clientId: 'your_ebay_client_id',
+    clientSecret: 'your_ebay_client_secret',
+    defaultAppId: 'your_default_app_id',
+    masterKey: 'your_secure_master_key_change_me',
+    initialRefreshToken: 'your_manual_refresh_token_from_browser_oauth',
+    useDatabase: true,
+    encryptionEnabled: true,
+    environment: 'PRODUCTION',
+    // 🌟 NEW: Centralized JSON (SSOT) configuration
+    ssotJsonPath: '/var/secure/ebay/refresh-ssot.json',
+    tokenNamespace: 'ebay-oauth'
+  };
+}
+```
+
+---
+
+## 🌟 NEW: src/providers/TokenProvider.js - Abstract Token Provider
+
+```javascript
+/**
+ * @typedef {{ refreshToken: string, version: number, updatedAt: string }} RefreshRecord
+ */
 
 /**
- * Trading API専用のUser Access Token取得
- * 用途: 出品、入札、ユーザー固有操作
- * OAuth2 Flow: Authorization Code Grant
- * @param {string} appId - eBay App ID
- * @param {Object} options - Configuration options
- * @returns {Promise<string>} - Trading API用 User Access Token
+ * Abstract base class for token providers that manage centralized refresh token storage.
+ * Provides the contract for SSOT (Single Source of Truth) implementations.
  */
-export const getTradingApiToken = (appId, options = {}) => {
-  console.log('🔑 Getting Trading API User Access Token');
-  if (!appId) {
-    // Use eBay official naming convention
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID; // App ID (Client ID) - eBay official name
-  }
-  
-  if (!appId) {
-    console.warn('⚠️ No App ID provided, using default configuration. Consider setting EBAY_CLIENT_ID environment variable.');
-    // Use a default instead of throwing error
-    appId = 'default';
+export class TokenProvider {
+  /**
+   * Get refresh token record for the specified App ID
+   * @param {string} _appId - The eBay App ID
+   * @returns {Promise<RefreshRecord|null>} Refresh token record or null if not found
+   */
+  async get(_appId) {
+    throw new Error('TokenProvider.get() not implemented');
   }
 
-  // Always use database-based manager with automatic dual storage
-  return defaultTokenManager.getUserAccessTokenByAppId(appId);
-};
-
-// ========================================
-// LEGACY COMPATIBILITY FUNCTIONS (DEPRECATED)
-// ========================================
-
-/**
- * Get Application Access Token (client_credentials grant) for Browse API
- * @deprecated Use getBrowseApiToken() instead for clarity
- * @returns {Promise<string>} - Application Access Token  
- */
-export const getApplicationAccessToken = () => {
-  console.warn('⚠️ getApplicationAccessToken() is deprecated. Use getBrowseApiToken() instead.');
-  return getBrowseApiToken();
-};
-
-/**
- * Get User Access Token by App ID (preferred method)
- * @param {string} appId - eBay App ID
- * @returns {Promise<string>} - User Access token
- */
-export const getUserAccessTokenByAppId = (appId) => {
-  if (!appId) {
-    appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
-  }
-  
-  if (!appId) {
-    throw new Error('App ID is required. Set EBAY_DEFAULT_APP_ID or EBAY_API_APP_NAME environment variable.');
+  /**
+   * Set refresh token for the specified App ID with version control
+   * @param {string} _appId - The eBay App ID
+   * @param {string} _refreshToken - The refresh token to store
+   * @param {number} _version - Version number for optimistic locking
+   * @returns {Promise<RefreshRecord>} The stored refresh token record
+   */
+  async set(_appId, _refreshToken, _version) {
+    throw new Error('TokenProvider.set() not implemented');
   }
 
-  // Always use database-based manager with automatic dual storage
-  return defaultTokenManager.getUserAccessTokenByAppId(appId);
-};
+  /**
+   * Execute function within distributed lock context
+   * @param {string} _appId - The eBay App ID to lock
+   * @param {Function} fn - Function to execute under lock
+   * @param {number} _ttlMs - Lock timeout in milliseconds (default: 5000)
+   * @returns {Promise<*>} Result of the executed function
+   */
+  async withLock(_appId, fn, _ttlMs = 5000) {
+    throw new Error('TokenProvider.withLock() not implemented');
+  }
+}
 
-/**
- * Get User Access Token by account name (legacy compatibility)
- * @param {string} [accountName] - Account name
- * @returns {Promise<string>} - User Access token
- */
-export const getUserAccessToken = (accountName = 'default') => {
-  // Always use database-based manager with automatic dual storage
-  // Try Default App ID first if no specific account name provided
-  if (accountName === 'default') {
-    const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
-    if (appId) {
-      return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
-        return defaultTokenManager.getUserAccessToken('default');
-      });
+export default TokenProvider;
+```
+
+---
+
+## 🌟 NEW: src/providers/FileJsonTokenProvider.js - SSOT JSON Implementation
+
+```javascript
+// FileJsonTokenProvider.js - Centralized JSON (SSOT) management with locking + encryption + atomic rename
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
+import { TokenProvider } from './TokenProvider.js';
+
+export class FileJsonTokenProvider extends TokenProvider {
+  /**
+   * @param {{ filePath: string, masterKey: string, namespace?: string }} opts
+   */
+  constructor({ filePath, masterKey, namespace = 'ebay-oauth' }) {
+    super();
+    if (!filePath) {
+      throw new Error('filePath is required');
+    }
+    if (!masterKey) {
+      throw new Error('masterKey is required for FileJsonTokenProvider');
+    }
+    this.filePath = path.resolve(filePath);
+    this.lockFile = `${this.filePath}.lock`;
+    this.ns = namespace;
+    // Machine-independent key derivation (for sharing)
+    this.encKey = crypto.scryptSync(masterKey, 'ebay-ssot-tokens-salt-v1', 32);
+  }
+
+  // --- Encryption utilities (AES-256-GCM with AAD) ---
+  encryptString(plain) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.encKey, iv);
+    cipher.setAAD(Buffer.from('ebay-ssot'));
+    const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `gcm:${iv.toString('base64')}:${tag.toString('base64')}:${enc.toString('base64')}`;
+  }
+
+  decryptString(data) {
+    if (!data?.startsWith('gcm:')) {
+      return data; // Backward compatibility (plain text assumed)
+    }
+    const [, ivB64, tagB64, encB64] = data.split(':');
+    const iv = Buffer.from(ivB64, 'base64');
+    const tag = Buffer.from(tagB64, 'base64');
+    const enc = Buffer.from(encB64, 'base64');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encKey, iv);
+    decipher.setAAD(Buffer.from('ebay-ssot'));
+    decipher.setAuthTag(tag);
+    const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+    return dec.toString('utf8');
+  }
+
+  // --- File I/O ---
+  async readState() {
+    try {
+      const raw = await fs.readFile(this.filePath, 'utf8');
+      return JSON.parse(raw);
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        return { version: 0, updatedAt: new Date().toISOString(), apps: {} };
+      }
+      throw e;
     }
   }
-  return defaultTokenManager.getUserAccessToken(accountName);
-};
 
-/**
- * Initialize token manager
- * @returns {Promise<void>}
- */
-export const initialize = () => {
-  if (defaultTokenManager.initialize) {
-    return defaultTokenManager.initialize();
+  async writeState(state) {
+    const dir = path.dirname(this.filePath);
+    await fs.mkdir(dir, { recursive: true });
+    const tmp = `${this.filePath}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(state, null, 2));
+    await fs.rename(tmp, this.filePath); // atomic
   }
-  return Promise.resolve();
-};
 
-// ========================================
-// LEGACY APPLICATION COMPATIBILITY
-// ========================================
-
-/**
- * Check if User Refresh Token is still valid (not expired)
- * Refresh Tokens are long-lived (typically 18 months) and allow renewal of User Access Tokens
- * @param {string} [appId] - eBay App ID to check (optional)
- * @returns {Promise<boolean>} True if User Refresh Token is valid, false if expired or not found
- */
-export const checkRefreshTokenValidity = (appId) => {
-  if (!appId) {
-    // Use eBay official naming convention
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+  // --- Simple locking (local/NFS compatible) ---
+  async withLock(appId, fn, ttlMs = 5000) {
+    const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const start = Date.now();
+    let acquired = false;
+    while (!acquired) {
+      try {
+        await fs.writeFile(this.lockFile, token, { flag: 'wx' });
+        acquired = true;
+      } catch (e) {
+        if (e.code !== 'EEXIST') {
+          throw e;
+        }
+        if (Date.now() - start > ttlMs) {
+          throw new Error('FileJsonTokenProvider: lock timeout');
+        }
+        await new Promise(r => setTimeout(r, 120));
+      }
+    }
+    try {
+      return await fn();
+    } finally {
+      try {
+        const cur = await fs.readFile(this.lockFile, 'utf8');
+        if (cur === token) {
+          await fs.unlink(this.lockFile);
+        }
+      } catch {
+        /* already released or missing */
+      }
+    }
   }
-  
-  // Always use database-based manager with automatic dual storage
-  return defaultTokenManager.checkRefreshTokenValidity();
-};
 
-/**
- * Get a valid **User Access Token** for eBay API calls
- * - Returns a fresh User Access Token, automatically refreshing via Refresh Token if expired
- * - User Access Tokens are short-lived (≈2 hours) and required for all account-specific operations
- * @returns {Promise<string>} Valid User Access Token for API requests
- */
-export const getValidAccessToken = () => {
-  // Always use database-based manager with automatic dual storage
-  const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
-  if (appId) {
-    return defaultTokenManager.getUserAccessTokenByAppId(appId);
+  // --- TokenProvider implementation ---
+  async get(appId) {
+    const state = await this.readState();
+    const app = state.apps?.[appId];
+    if (!app) {
+      return null;
+    }
+    const rt = this.decryptString(app.refreshTokenEnc || app.refreshToken); // Backward compatibility
+    return { refreshToken: rt, version: app.version ?? 0, updatedAt: app.updatedAt };
   }
-  return defaultTokenManager.getUserAccessToken('default');
-};
 
-// ========================================
-// NEW TOKEN INFORMATION METHODS
-// ========================================
-
-/**
- * Get comprehensive User Access Token information including metadata
- * @param {string} appId - The eBay App ID to get token info for
- * @returns {Promise<Object>} User token information object
- */
-export const getUserTokenInfo = (appId) => {
-  if (!appId) {
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+  async set(appId, refreshToken, version) {
+    return this.withLock(appId, async () => {
+      const state = await this.readState();
+      const enc = this.encryptString(refreshToken);
+      state.apps = state.apps || {};
+      state.apps[appId] = {
+        refreshTokenEnc: enc,
+        version,
+        updatedAt: new Date().toISOString(),
+      };
+      state.version = (state.version ?? 0) + 1; // Global version increment (for audit)
+      state.updatedAt = new Date().toISOString();
+      await this.writeState(state);
+      return { refreshToken, version, updatedAt: state.apps[appId].updatedAt };
+    });
   }
-  
-  return defaultTokenManager.getUserTokenInfo(appId);
-};
+}
 
-/**
- * Get User Access Token expiration information
- * @param {string} appId - The eBay App ID to check expiration for
- * @returns {Promise<Object>} User token expiration information object
- */
-export const getUserTokenExpiration = (appId) => {
-  if (!appId) {
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+export default FileJsonTokenProvider;
+```
+
+---
+
+## src/UserAccessToken_AuthorizationCodeManager.js - Core User Token Management
+
+```javascript
+// UserAccessToken_AuthorizationCodeManager.js - SQLite Database-based eBay User Access Token Management (authorization_code grant)
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import crypto from 'crypto';
+import path from 'path';
+import axios from 'axios';
+import LocalSharedTokenManager from './LocalSharedTokenManager.js';
+import FileJsonTokenProvider from './providers/FileJsonTokenProvider.js';
+
+class UserAccessToken_AuthorizationCodeManager {
+  constructor(options = {}) {
+    // Validate required options
+    if (!options.clientId) {
+      throw new Error('clientId is required. Pass it as option or set EBAY_CLIENT_ID environment variable.');
+    }
+    if (!options.clientSecret) {
+      throw new Error('clientSecret is required. Pass it as option or set EBAY_CLIENT_SECRET environment variable.');
+    }
+
+    // Database path - configurable
+    this.dbPath = options.databasePath || path.resolve('./database/ebay_tokens.sqlite');
+    
+    // eBay API credentials
+    this.clientId = options.clientId;
+    this.clientSecret = options.clientSecret;
+    this.tokenUrl = options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token';
+    this.encryptionEnabled = options.encryptionEnabled ?? true;
+    
+    // Default App ID for database searches (prioritized over clientId)
+    this.defaultAppId = options.defaultAppId || this.clientId;
+    
+    // Initial Refresh Token for first-time setup
+    this.initialRefreshToken = options.initialRefreshToken;
+    
+    // Database connection (lazy initialization)
+    this.db = null;
+    
+    // In-memory cache for performance
+    this.memoryCache = new Map();
+    this.cacheExpiration = new Map();
+    
+    // Encryption key for token storage
+    if (this.encryptionEnabled) {
+      if (!options.masterKey) {
+        throw new Error('masterKey is required when encryption is enabled. Pass it as option or set EBAY_MASTER_KEY environment variable.');
+      }
+      this.masterKey = options.masterKey;
+      this.encryptionKey = this.deriveEncryptionKey();
+    }
+    
+    // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
+    // This provides fast JSON access and automatic backup
+    try {
+      this.fileTokenManager = new LocalSharedTokenManager({
+        masterKey: options.masterKey || 'default-secure-key-for-local-storage',
+        tokenFilePath: options.tokenFilePath
+      });
+      console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
+    } catch (error) {
+      console.warn('⚠️ Could not initialize file token manager, using database only:', error.message);
+      this.fileTokenManager = null;
+    }
+
+    // 🌟 NEW: Centralized JSON (SSOT) Provider (enabled if specified)
+    this.tokenProvider = options.tokenProvider || (
+      options.ssotJsonPath
+        ? new FileJsonTokenProvider({
+          filePath: options.ssotJsonPath,
+          masterKey: options.masterKey || 'default-secure-key-for-local-storage',
+          namespace: options.tokenNamespace || 'ebay-oauth'
+        })
+        : null
+    );
+    
+    if (this.tokenProvider) {
+      console.log('🌟 Centralized token provider (SSOT) enabled for multi-package coordination');
+    }
+    
+    // Auto-initialize refresh token if provided
+    if (this.initialRefreshToken) {
+      this.initializeRefreshToken();
+    }
   }
-  
-  return defaultTokenManager.getUserTokenExpiration(appId);
-};
 
-/**
- * Get the eBay account name associated with a User Access Token
- * @param {string} appId - The eBay App ID to get account name for
- * @returns {Promise<string>} The eBay account name
- */
-export const getUserAccountName = (appId) => {
-  if (!appId) {
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+  /**
+   * Set refresh token for first-time setup
+   * @param {string} refreshToken - The refresh token obtained from manual OAuth flow
+   * @param {string} accountName - Account name to associate with the token (default: 'default')
+   * @param {string} appId - App ID to associate with the token (default: this.defaultAppId)
+   */
+  async setRefreshToken(refreshToken, accountName = 'default', appId = null) {
+    try {
+      console.log(`🔑 Setting initial refresh token for account: ${accountName}`);
+      
+      if (!refreshToken) {
+        throw new Error('Refresh token is required');
+      }
+
+      const now = new Date().toISOString();
+      const actualAppId = appId || this.defaultAppId;
+      
+      // Create minimal token data with expired access token to force immediate refresh
+      const tokenData = {
+        accessToken: 'initial_placeholder_token',
+        refreshToken: refreshToken,
+        accessTokenUpdatedDate: '1970-01-01T00:00:00.000Z', // Force expiration
+        refreshTokenUpdatedDate: now,
+        expiresIn: 1, // 1 second - forces immediate refresh
+        refreshTokenExpiresIn: 47304000, // 1.5 years default
+        tokenType: 'Bearer',
+        appId: actualAppId
+      };
+
+      await this.saveUserAccessToken(accountName, tokenData);
+      console.log(`✅ Initial refresh token set successfully for ${accountName} (App ID: ${actualAppId})`);
+      console.log('💡 Access token will be automatically obtained on first use');
+      
+    } catch (error) {
+      console.error('🚨 Failed to set refresh token:', error.message);
+      throw error;
+    }
   }
-  
-  return defaultTokenManager.getUserAccountName(appId);
-};
 
-// Backward compatibility aliases for User Access Token info methods
-// DO NOT REMOVE (used by existing packages)
-export const getTokenInfo = getUserTokenInfo;
-export const getTokenExpiration = getUserTokenExpiration;
-export const getAccountName = getUserAccountName;
+  /**
+   * Initialize refresh token from constructor options (called automatically)
+   */
+  async initializeRefreshToken() {
+    try {
+      if (!this.initialRefreshToken) {
+        return;
+      }
+      
+      console.log('🚀 Auto-initializing refresh token from environment...');
+      await this.setRefreshToken(this.initialRefreshToken, 'default', this.defaultAppId);
+      
+    } catch (error) {
+      console.warn('⚠️ Failed to auto-initialize refresh token:', error.message);
+      // Don't throw error - this is a convenience feature, not critical
+    }
+  }
+
+  // ... [Database and token management methods remain the same] ...
+
+  /**
+   * 🌟 NEW: Enhanced refresh access token by App ID with SSOT support
+   */
+  async renewUserAccessTokenByAppId(appId, tokenData, options = {}) {
+    try {
+      console.log(`🔄 Refreshing access token for App ID: ${appId}`);
+
+      // 1) Get latest refresh token from centralized provider (SSOT) if available
+      let rtRecord = null;
+      if (this.tokenProvider) {
+        rtRecord = await this.tokenProvider.get(appId);
+      }
+      const refreshToken = rtRecord?.refreshToken || this.decryptToken(tokenData.refresh_token);
+
+      // Prepare OAuth request function
+      const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+      const now = new Date().toISOString();
+
+      const doRefresh = async (rt) => {
+        let requestBody = `grant_type=refresh_token&refresh_token=${encodeURIComponent(rt)}`;
+        
+        // Add scope if provided
+        if (options.scope) {
+          requestBody += `&scope=${encodeURIComponent(options.scope)}`;
+        }
+
+        return await axios.post(
+          this.tokenUrl,
+          requestBody,
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${auth}`,
+            }
+          }
+        );
+      };
+
+      let data;
+      if (this.tokenProvider) {
+        // Use centralized provider with distributed locking
+        data = await this.tokenProvider.withLock(appId, async () => {
+          const latest = await this.tokenProvider.get(appId);
+          const rtToUse = latest?.refreshToken || refreshToken;
+          const res = await doRefresh(rtToUse);
+          const body = res.data;
+          
+          // eBay returns new refresh_token only sometimes - increment version when it does
+          const newRT = body.refresh_token || rtToUse;
+          const newVersion = (latest?.version ?? rtRecord?.version ?? 0) + (body.refresh_token ? 1 : 0);
+          await this.tokenProvider.set(appId, newRT, newVersion);
+          return body;
+        });
+      } else {
+        // Legacy mode - direct refresh without provider
+        data = (await doRefresh(refreshToken)).data;
+      }
+
+      // Update token data in database by account name (since saveUserAccessToken uses account_name)
+      await this.saveUserAccessToken(tokenData.account_name, {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || refreshToken,
+        accessTokenUpdatedDate: now,
+        refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
+        expiresIn: data.expires_in,
+        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+        tokenType: data.token_type || 'Bearer',
+        appId: appId
+      });
+
+      console.log(`✅ Access token refreshed successfully for App ID ${appId} (${tokenData.account_name})`);
+      
+      // Clear related caches
+      this.memoryCache.delete(`token_appid_${appId}`);
+      this.cacheExpiration.delete(`token_appid_${appId}`);
+      this.memoryCache.delete(`token_${tokenData.account_name}`);
+      this.cacheExpiration.delete(`token_${tokenData.account_name}`);
+      
+      // Next call caching for performance
+      this.updateMemoryCache(`token_appid_${appId}`, data.access_token, data.expires_in);
+      
+      return data;
+    } catch (error) {
+      // 🛡️ NEW: Handle invalid_grant with automatic recovery using centralized provider
+      if (this.tokenProvider && error.response?.data?.error === 'invalid_grant') {
+        console.warn(`⚠️ Invalid grant detected for App ID ${appId}, attempting recovery from SSOT...`);
+        
+        // Clear local caches to force fresh reads
+        this.memoryCache.delete(`token_appid_${appId}`);
+        this.cacheExpiration.delete(`token_appid_${appId}`);
+        
+        try {
+          const latest = await this.tokenProvider.get(appId);
+          if (latest?.refreshToken) {
+            console.log(`🔄 Retrying refresh with latest token from SSOT (version: ${latest.version})`);
+            
+            const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+            let requestBody = `grant_type=refresh_token&refresh_token=${encodeURIComponent(latest.refreshToken)}`;
+            
+            if (options.scope) {
+              requestBody += `&scope=${encodeURIComponent(options.scope)}`;
+            }
+
+            const response = await axios.post(
+              this.tokenUrl,
+              requestBody,
+              {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Authorization': `Basic ${auth}`,
+                }
+              }
+            );
+
+            const data = response.data;
+            const now = new Date().toISOString();
+            
+            // Update centralized provider
+            const newRT = data.refresh_token || latest.refreshToken;
+            const newVersion = (latest.version ?? 0) + (data.refresh_token ? 1 : 0);
+            await this.tokenProvider.set(appId, newRT, newVersion);
+
+            // Update local database
+            await this.saveUserAccessToken(tokenData.account_name, {
+              accessToken: data.access_token,
+              refreshToken: newRT,
+              accessTokenUpdatedDate: now,
+              refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
+              expiresIn: data.expires_in,
+              refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+              tokenType: data.token_type || 'Bearer',
+              appId: appId
+            });
+
+            console.log(`✅ Successfully recovered from invalid_grant for App ID ${appId}`);
+            this.updateMemoryCache(`token_appid_${appId}`, data.access_token, data.expires_in);
+            return data;
+          }
+        } catch (recoveryError) {
+          console.error(`🚨 Failed to recover from invalid_grant: ${recoveryError.message}`);
+          throw new Error(`eBay token refresh failed after SSOT recovery attempt: ${recoveryError.response?.data?.error_description || recoveryError.message}`);
+        }
+      }
+
+      console.error(`🚨 Failed to refresh access token for App ID ${appId}:`, error.message);
+      if (error.response?.data) {
+        console.error('eBay API error response:', error.response.data);
+      }
+      throw new Error(`eBay token refresh failed: ${error.response?.data?.error_description || error.message}`);
+    }
+  }
+
+  // ... [All other methods remain the same] ...
+}
+
+export default UserAccessToken_AuthorizationCodeManager;
 ```
 
 ---
@@ -686,188 +1024,265 @@ export default LocalSharedTokenManager;
 
 ---
 
-## Key Features Demonstrated
-
-### 1. **4-Layer Token Retrieval System**
-```javascript
-// Implemented in UserAccessToken_AuthorizationCodeManager
-// Layer 1: Memory cache (~1ms)
-// Layer 2: LocalSharedTokenManager JSON file (~10ms)  
-// Layer 3: SQLite database (~50ms)
-// Layer 4: eBay API refresh (~500ms)
-```
-
-### 2. **Automatic Dual Storage**
-```javascript
-// Constructor automatically initializes LocalSharedTokenManager
-this.fileTokenManager = new LocalSharedTokenManager({
-  masterKey: options.masterKey || 'default-secure-key-for-local-storage',
-  tokenFilePath: options.tokenFilePath
-});
-```
-
-### 3. **Platform-Specific Secure Directories**
-```javascript
-// From LocalSharedTokenManager
-this.tokenFile = options.tokenFilePath || path.join(
-  process.env.PROGRAMDATA || process.env.HOME || process.env.USERPROFILE || '/tmp',
-  'EStocks/tokens/ebay-tokens.encrypted.json'
-);
-```
-
-### 4. **AES-256-GCM Encryption (Database)**
-```javascript
-// Database tokens use GCM for better security
-const iv = crypto.randomBytes(16);
-const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-return `aes-256-gcm:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
-```
-
-### 5. **AES-256-CBC Encryption (File Storage)**
-```javascript
-// File tokens use CBC for compatibility
-const iv = crypto.randomBytes(16);
-const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
-```
-
-### 6. **Comprehensive Logging with Token Type Clarity**
-```javascript
-// Clear distinction between token types in all logs
-console.log('🔑 Getting Browse API Application Access Token');
-console.log('🔑 Getting Trading API User Access Token');
-console.log('✅ User Refresh Token is valid');
-```
-
-## Important Constraints
-
-⚠️ **Critical Limitation**: User Refresh Tokens cannot be generated programmatically via API. They must be obtained through manual browser-based OAuth flow. This library manages them once obtained, but cannot generate them automatically.
-
-## Token Type Clarity
-
-### Application Access Tokens (Public APIs)
-- **getBrowseApiToken()** - For product search, item details
-- **getTaxonomyApiToken()** - For category hierarchies, metadata
-- Short-lived (~2 hours), no refresh mechanism needed
-
-### User Access Tokens (Account-Specific APIs)  
-- **getTradingApiToken()** - For listing, bidding, account operations
-- **getUserTokenInfo()** - Get User token metadata
-- **getUserTokenExpiration()** - Check User token expiration
-- **getUserAccountName()** - Get associated eBay account name
-- Short-lived (~2 hours), renewable via User Refresh Token
-
-## Usage Examples
+## src/index.js - Main Entry Point
 
 ```javascript
-import { 
-  getTradingApiToken, 
-  getBrowseApiToken, 
-  getUserTokenInfo,
-  checkRefreshTokenValidity 
-} from 'ebay-oauth-token-manager';
+// @your-org/ebay-oauth-token-manager - Main Entry Point
+import LocalSharedTokenManager from './LocalSharedTokenManager.js';
+import ApplicationAccessToken_ClientCredentialsManager from './ApplicationAccessToken_ClientCredentialsManager.js';
+import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_AuthorizationCodeManager.js';
+import { loadConfig } from './config.js';
 
-// Application Access Tokens (public data)
-const browseToken = await getBrowseApiToken();
-const taxonomyToken = await getTaxonomyApiToken();
+// 🌟 NEW: Export Provider classes
+export { TokenProvider } from './providers/TokenProvider.js';
+export { FileJsonTokenProvider } from './providers/FileJsonTokenProvider.js';
 
-// User Access Tokens (account-specific)
-const tradingToken = await getTradingApiToken('your-app-id');
+// Load configuration
+const config = loadConfig();
 
-// User token information and validation
-const tokenInfo = await getUserTokenInfo('your-app-id');
-console.log(`User token expires at: ${tokenInfo.expires_at}`);
-console.log(`eBay account: ${tokenInfo.account_name}`);
+// Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
+const defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
+console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
 
-const isValid = await checkRefreshTokenValidity('your-app-id');
-console.log(`User Refresh Token valid: ${isValid}`);
-```
+// Export classes for direct access if needed
+export {
+  LocalSharedTokenManager,
+  ApplicationAccessToken_ClientCredentialsManager,
+  UserAccessToken_AuthorizationCodeManager
+};
 
-## Storage Locations
+// Export OAuth scope utilities for convenience
+export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType } from './ebayScopes.js';
 
-- **Windows**: `%PROGRAMDATA%\\EStocks\\tokens\\ebay-tokens.encrypted.json`
-- **Linux/Mac**: `$HOME/EStocks/tokens/ebay-tokens.encrypted.json`  
-- **SQLite DB**: `./database/ebay_tokens.sqlite`
-
-## src/config.js - Configuration Management
-
-```javascript
-// Configuration management for eBay OAuth Token Manager
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import path from 'path';
-
-// Load environment variables
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Try to load .env from package root
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+// ========================================
+// CORE TOKEN FUNCTIONS (API-SPECIFIC METHODS)
+// ========================================
 
 /**
- * Load configuration from environment variables and config files
- * @param {Object} options - Override options
- * @returns {Object} Configuration object
+ * Browse API専用のApplication Access Token取得
+ * 用途: 商品検索、商品詳細取得、公開データアクセス
+ * OAuth2 Flow: Client Credentials Grant
+ * @param {Object} options - Configuration options
+ * @returns {Promise<string>} - Browse API用 Application Access Token
  */
-export function loadConfig(options = {}) {
-  // Validate required environment variables
-  const requiredVars = ['EBAY_CLIENT_ID', 'EBAY_CLIENT_SECRET'];
-  const missing = requiredVars.filter(varName => !process.env[varName] && !options[varName.toLowerCase().replace('ebay_', '')]);
+export const getBrowseApiToken = (appId, options = {}) => {
+  console.log('🔑 Getting Browse API Application Access Token');
   
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}\nPlease set these variables or pass them as options.`);
+  // Handle case where first parameter is options object (backward compatibility)
+  if (typeof appId === 'object' && appId !== null) {
+    options = appId;
+    appId = undefined;
   }
-
-  const config = {
-    // eBay API Credentials (REQUIRED)
-    clientId: options.clientId || process.env.EBAY_CLIENT_ID,
-    clientSecret: options.clientSecret || process.env.EBAY_CLIENT_SECRET,
-    
-    // Optional configuration
-    defaultAppId: options.defaultAppId || process.env.EBAY_CLIENT_ID,
-    environment: options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
-    
-    // Token storage configuration
-    useDatabase: options.useDatabase ?? (process.env.EBAY_USE_DATABASE_TOKENS === 'true'),
-    useLegacyFile: options.useLegacyFile ?? (process.env.EBAY_USE_LEGACY_TOKENS === 'true'),
-    
-    // Database configuration
-    databasePath: options.databasePath || process.env.EBAY_DATABASE_PATH || './database/ebay_tokens.sqlite',
-    
-    // File-based token storage configuration
-    tokenFilePath: options.tokenFilePath || process.env.EBAY_TOKEN_FILE_PATH,
-    
-    // Encryption configuration
-    encryptionEnabled: options.encryptionEnabled ?? true,
-    masterKey: options.masterKey || process.env.EBAY_MASTER_KEY,
-    
-    // API URLs (usually don't need to change)
-    tokenUrl: options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token',
-    scope: options.scope || 'https://api.ebay.com/oauth/api_scope'
-  };
-
-  // Validate encryption key if encryption is enabled
-  if (config.encryptionEnabled && !config.masterKey) {
-    throw new Error('EBAY_MASTER_KEY environment variable is required when encryption is enabled. Set EBAY_MASTER_KEY or pass masterKey option.');
+  
+  if (!appId) {
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
   }
-
-  return config;
-}
+  const manager = new ApplicationAccessToken_ClientCredentialsManager({ ...config, ...options });
+  return manager.getApplicationAccessToken();
+};
 
 /**
- * Get default configuration for examples and testing
- * @returns {Object} Example configuration
+ * Taxonomy API専用のApplication Access Token取得
+ * 用途: カテゴリ階層取得、商品属性情報、カテゴリツリー探索
+ * OAuth2 Flow: Client Credentials Grant
+ * API Endpoint: /commerce/taxonomy/v1/*
+ * @param {Object} options - Configuration options
+ * @returns {Promise<string>} - Taxonomy API用 Application Access Token
  */
-export function getExampleConfig() {
-  return {
-    clientId: 'your_ebay_client_id',
-    clientSecret: 'your_ebay_client_secret',
-    defaultAppId: 'your_default_app_id',
-    masterKey: 'your_secure_master_key_change_me',
-    useDatabase: true,
-    encryptionEnabled: true,
-    environment: 'PRODUCTION'
-  };
-}
+export const getTaxonomyApiToken = (options = {}) => {
+  console.log('🏷️ Getting Taxonomy API Application Access Token');
+  
+  const manager = new ApplicationAccessToken_ClientCredentialsManager({ 
+    ...config, 
+    ...options,
+    scope: options.scope || 'https://api.ebay.com/oauth/api_scope'
+  });
+  return manager.getApplicationAccessToken();
+};
+
+/**
+ * Trading API専用のUser Access Token取得
+ * 🌟 NEW: SSOT coordination support
+ * 用途: 出品、入札、ユーザー固有操作
+ * OAuth2 Flow: Authorization Code Grant
+ * @param {string} appId - eBay App ID
+ * @param {Object} options - Configuration options
+ * @returns {Promise<string>} - Trading API用 User Access Token
+ */
+export const getTradingApiToken = (appId, options = {}) => {
+  console.log('🔑 Getting Trading API User Access Token');
+  if (!appId) {
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID; // App ID (Client ID) - eBay official name
+  }
+  
+  if (!appId) {
+    console.warn('⚠️ No App ID provided, using default configuration. Consider setting EBAY_CLIENT_ID environment variable.');
+    // Use a default instead of throwing error
+    appId = 'default';
+  }
+
+  // Always use database-based manager with automatic dual storage + SSOT support
+  return defaultTokenManager.getUserAccessTokenByAppId(appId);
+};
+
+// ========================================
+// LEGACY COMPATIBILITY FUNCTIONS (DEPRECATED)
+// ========================================
+
+/**
+ * Get Application Access Token (client_credentials grant) for Browse API
+ * @deprecated Use getBrowseApiToken() instead for clarity
+ * @returns {Promise<string>} - Application Access Token  
+ */
+export const getApplicationAccessToken = () => {
+  console.warn('⚠️ getApplicationAccessToken() is deprecated. Use getBrowseApiToken() instead.');
+  return getBrowseApiToken();
+};
+
+/**
+ * Get User Access Token by App ID (preferred method)
+ * @param {string} appId - eBay App ID
+ * @returns {Promise<string>} - User Access token
+ */
+export const getUserAccessTokenByAppId = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+  }
+  
+  if (!appId) {
+    throw new Error('App ID is required. Set EBAY_DEFAULT_APP_ID or EBAY_API_APP_NAME environment variable.');
+  }
+
+  // Always use database-based manager with automatic dual storage + SSOT support
+  return defaultTokenManager.getUserAccessTokenByAppId(appId);
+};
+
+/**
+ * Get User Access Token by account name (legacy compatibility)
+ * @param {string} [accountName] - Account name
+ * @returns {Promise<string>} - User Access token
+ */
+export const getUserAccessToken = (accountName = 'default') => {
+  // Always use database-based manager with automatic dual storage
+  // Try Default App ID first if no specific account name provided
+  if (accountName === 'default') {
+    const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+    if (appId) {
+      return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
+        return defaultTokenManager.getUserAccessToken('default');
+      });
+    }
+  }
+  return defaultTokenManager.getUserAccessToken(accountName);
+};
+
+// ========================================
+// NEW TOKEN INFORMATION METHODS
+// ========================================
+
+/**
+ * Get comprehensive User Access Token information including metadata
+ * @param {string} appId - The eBay App ID to get token info for
+ * @returns {Promise<Object>} User token information object
+ */
+export const getUserTokenInfo = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserTokenInfo(appId);
+};
+
+/**
+ * Get User Access Token expiration information
+ * @param {string} appId - The eBay App ID to check expiration for
+ * @returns {Promise<Object>} User token expiration information object
+ */
+export const getUserTokenExpiration = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserTokenExpiration(appId);
+};
+
+/**
+ * Get the eBay account name associated with a User Access Token
+ * @param {string} appId - The eBay App ID to get account name for
+ * @returns {Promise<string>} The eBay account name
+ */
+export const getUserAccountName = (appId) => {
+  if (!appId) {
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  return defaultTokenManager.getUserAccountName(appId);
+};
+
+// Backward compatibility aliases for User Access Token info methods
+// DO NOT REMOVE (used by existing packages)
+export const getTokenInfo = getUserTokenInfo;
+export const getTokenExpiration = getUserTokenExpiration;
+export const getAccountName = getUserAccountName;
+
+// ========================================
+// LEGACY APPLICATION COMPATIBILITY
+// ========================================
+
+/**
+ * Check if User Refresh Token is still valid (not expired)
+ * Refresh Tokens are long-lived (typically 18 months) and allow renewal of User Access Tokens
+ * @param {string} [appId] - eBay App ID to check (optional)
+ * @returns {Promise<boolean>} True if User Refresh Token is valid, false if expired or not found
+ */
+export const checkRefreshTokenValidity = (appId) => {
+  if (!appId) {
+    // Use eBay official naming convention
+    appId = config.defaultAppId || 
+             process.env.EBAY_CLIENT_ID ||
+             'default';
+  }
+  
+  // Always use database-based manager with automatic dual storage
+  return defaultTokenManager.checkRefreshTokenValidity();
+};
+
+/**
+ * Get a valid **User Access Token** for eBay API calls
+ * - Returns a fresh User Access Token, automatically refreshing via Refresh Token if expired
+ * - User Access Tokens are short-lived (≈2 hours) and required for all account-specific operations
+ * @returns {Promise<string>} Valid User Access Token for API requests
+ */
+export const getValidAccessToken = () => {
+  // Always use database-based manager with automatic dual storage
+  const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
+  if (appId) {
+    return defaultTokenManager.getUserAccessTokenByAppId(appId);
+  }
+  return defaultTokenManager.getUserAccessToken('default');
+};
+
+/**
+ * Initialize token manager
+ * @returns {Promise<void>}
+ */
+export const initialize = () => {
+  if (defaultTokenManager.initialize) {
+    return defaultTokenManager.initialize();
+  }
+  return Promise.resolve();
+};
 ```
 
 ---
@@ -1004,492 +1419,392 @@ export default EBAY_SCOPES;
 
 ---
 
-This library provides a robust, secure, and performant solution for eBay OAuth 2.0 token management with enterprise-grade features like encryption, caching, and automatic failover.
-
----
-
-## src/UserAccessToken_AuthorizationCodeManager.js - Core User Token Management
+## 🌟 NEW: tests/providers/FileJsonTokenProvider.test.js - Provider Tests
 
 ```javascript
-// UserAccessToken_AuthorizationCodeManager.js - SQLite Database-based eBay User Access Token Management (authorization_code grant)
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import crypto from 'crypto';
+// FileJsonTokenProvider.test.js - Basic tests for centralized JSON token provider
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import axios from 'axios';
-import LocalSharedTokenManager from './LocalSharedTokenManager.js';
+import { FileJsonTokenProvider } from '../../src/providers/FileJsonTokenProvider.js';
 
-class UserAccessToken_AuthorizationCodeManager {
-  constructor(options = {}) {
-    // Validate required options
-    if (!options.clientId) {
-      throw new Error('clientId is required. Pass it as option or set EBAY_CLIENT_ID environment variable.');
-    }
-    if (!options.clientSecret) {
-      throw new Error('clientSecret is required. Pass it as option or set EBAY_CLIENT_SECRET environment variable.');
-    }
+describe('FileJsonTokenProvider', () => {
+  let provider;
+  let testFilePath;
+  let testMasterKey;
 
-    // Database path - configurable
-    this.dbPath = options.databasePath || path.resolve('./database/ebay_tokens.sqlite');
-    
-    // eBay API credentials
-    this.clientId = options.clientId;
-    this.clientSecret = options.clientSecret;
-    this.tokenUrl = options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token';
-    this.encryptionEnabled = options.encryptionEnabled ?? true;
-    
-    // Default App ID for database searches (prioritized over clientId)
-    this.defaultAppId = options.defaultAppId || this.clientId;
-    
-    // Database connection (lazy initialization)
-    this.db = null;
-    
-    // In-memory cache for performance
-    this.memoryCache = new Map();
-    this.cacheExpiration = new Map();
-    
-    // Encryption key for token storage
-    if (this.encryptionEnabled) {
-      if (!options.masterKey) {
-        throw new Error('masterKey is required when encryption is enabled. Pass it as option or set EBAY_MASTER_KEY environment variable.');
-      }
-      this.masterKey = options.masterKey;
-      this.encryptionKey = this.deriveEncryptionKey();
-    }
-    
-    // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
-    // This provides fast JSON access and automatic backup
+  beforeEach(() => {
+    testFilePath = path.resolve('./tests/temp/test-ssot-tokens.json');
+    testMasterKey = 'test-master-key-for-unit-tests';
+    provider = new FileJsonTokenProvider({
+      filePath: testFilePath,
+      masterKey: testMasterKey,
+      namespace: 'test-ebay-oauth'
+    });
+  });
+
+  afterEach(async () => {
+    // Cleanup test files
     try {
-      this.fileTokenManager = new LocalSharedTokenManager({
-        masterKey: options.masterKey || 'default-secure-key-for-local-storage',
-        tokenFilePath: options.tokenFilePath
-      });
-      console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
-    } catch (error) {
-      console.warn('⚠️ Could not initialize file token manager, using database only:', error.message);
-      this.fileTokenManager = null;
+      await fs.unlink(testFilePath);
+      await fs.unlink(`${testFilePath}.lock`);
+      await fs.unlink(`${testFilePath}.tmp`);
+    } catch (e) {
+      // Ignore cleanup errors
     }
-  }
+  });
 
-  /**
-   * Get database connection (lazy initialization)
-   */
-  async getDb() {
-    if (!this.db) {
-      // Ensure database directory exists
-      const dbDir = path.dirname(this.dbPath);
-      await import('fs/promises').then(fs => fs.mkdir(dbDir, { recursive: true }));
-      
-      this.db = await open({
-        filename: this.dbPath,
-        driver: sqlite3.Database
-      });
-      
-      // Enable foreign keys and WAL mode for better performance
-      await this.db.exec('PRAGMA foreign_keys = ON');
-      await this.db.exec('PRAGMA journal_mode = WAL');
-      
-      // Create table if it doesn't exist
-      await this.initializeDatabase();
-    }
-    return this.db;
-  }
+  it('should create a new FileJsonTokenProvider instance', () => {
+    expect(provider).toBeInstanceOf(FileJsonTokenProvider);
+    expect(provider.filePath).toBe(testFilePath);
+    expect(provider.lockFile).toBe(`${testFilePath}.lock`);
+    expect(provider.ns).toBe('test-ebay-oauth');
+  });
 
-  /**
-   * Initialize database schema
-   */
-  async initializeDatabase() {
-    const db = await this.getDb();
-    await db.exec(\`
-      CREATE TABLE IF NOT EXISTS ebay_oauth_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL DEFAULT 'oauth',
-        account_name TEXT NOT NULL UNIQUE,
-        app_id TEXT,
-        access_token TEXT NOT NULL,
-        refresh_token TEXT NOT NULL,
-        access_token_updated_date TEXT NOT NULL,
-        expires_in INTEGER NOT NULL,
-        refresh_token_updated_date TEXT NOT NULL,
-        refresh_token_expires_in INTEGER NOT NULL DEFAULT 47304000,
-        token_type TEXT DEFAULT 'Bearer',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    \`);
+  it('should require filePath and masterKey in constructor', () => {
+    expect(() => new FileJsonTokenProvider({ masterKey: 'test' }))
+      .toThrow('filePath is required');
     
-    // Create index for app_id lookups
-    await db.exec(\`
-      CREATE INDEX IF NOT EXISTS idx_ebay_oauth_tokens_app_id 
-      ON ebay_oauth_tokens(app_id)
-    \`);
-  }
+    expect(() => new FileJsonTokenProvider({ filePath: 'test.json' }))
+      .toThrow('masterKey is required for FileJsonTokenProvider');
+  });
 
-  /**
-   * Get valid User Access Token by App ID (preferred method)
-   * Priority: Memory Cache → JSON File → Database → Refresh from eBay
-   */
-  async getUserAccessTokenByAppId(appId) {
-    try {
-      console.log(\`🔍 Checking token for App ID: \${appId}\`);
-      
-      // 1. Check memory cache first (fastest ~1ms)
-      const cacheKey = \`token_appid_\${appId}\`;
-      if (this.memoryCache.has(cacheKey)) {
-        const cachedToken = this.memoryCache.get(cacheKey);
-        const expiration = this.cacheExpiration.get(cacheKey);
-        
-        if (Date.now() < expiration) {
-          console.log(\`✅ Using cached token for App ID \${appId}\`);
-          return cachedToken;
-        } else {
-          // Remove expired cache
-          this.memoryCache.delete(cacheKey);
-          this.cacheExpiration.delete(cacheKey);
-          console.log(\`🗑️ Removed expired cache for App ID \${appId}\`);
-        }
-      }
+  it('should return null for non-existent appId', async () => {
+    const result = await provider.get('non-existent-app-id');
+    expect(result).toBe(null);
+  });
 
-      // 2. Check JSON file second (fast ~10ms)
-      if (this.fileTokenManager) {
-        try {
-          const jsonToken = await this.fileTokenManager.getToken(appId);
-          if (jsonToken && jsonToken.accessToken) {
-            // Check if access token is not expired (2 hours = 7200 seconds)
-            const tokenAge = Date.now() - new Date(jsonToken.accessTokenUpdatedDate).getTime();
-            const expiresIn = (jsonToken.expiresIn || 7200) * 1000; // Convert to milliseconds
-            
-            if (tokenAge < expiresIn - 300000) { // 5 minutes buffer
-              console.log(\`📁 Using token from JSON file for App ID \${appId}\`);
-              
-              // Cache in memory for next time
-              this.memoryCache.set(cacheKey, jsonToken.accessToken);
-              this.cacheExpiration.set(cacheKey, Date.now() + expiresIn - tokenAge);
-              
-              return jsonToken.accessToken;
-            } else {
-              console.log(\`⏰ JSON file token expired for App ID \${appId}, will refresh\`);
-            }
-          }
-        } catch (fileError) {
-          console.log(\`📁 Could not read from JSON file: \${fileError.message}\`);
-        }
-      }
+  it('should store and retrieve refresh token with version control', async () => {
+    const appId = 'test-app-id';
+    const refreshToken = 'test-refresh-token-12345';
+    const version = 1;
 
-      // 3. Get token from database third (~50ms)
-      console.log(\`🗄️ Getting token from database for App ID: \${appId}\`);
-      const tokenData = await this.getTokenByAppId(appId);
-      
-      if (!tokenData) {
-        // Fallback: Try to get by default account name if App ID matches
-        if (appId === this.clientId) {
-          console.log(\`🔄 App ID matches client ID, trying default account fallback...\`);
-          return await this.getUserAccessToken('default');
-        }
-        throw new Error(\`No token found for App ID: \${appId}\`);
-      }
+    // Store token
+    const stored = await provider.set(appId, refreshToken, version);
+    expect(stored.refreshToken).toBe(refreshToken);
+    expect(stored.version).toBe(version);
+    expect(stored.updatedAt).toBeDefined();
 
-      // 4. Check if access token is expired and refresh via eBay API (~500ms)
-      if (this.isAccessTokenExpired(tokenData)) {
-        console.log(\`⚠️ Access token expired for App ID \${appId}, refreshing via eBay API...\`);
-        await this.renewUserAccessTokenByAppId(appId, tokenData);
-        // Get updated token data
-        const refreshedTokenData = await this.getTokenByAppId(appId);
-        if (refreshedTokenData) {
-          const decryptedToken = this.decryptToken(refreshedTokenData.access_token);
-          this.updateMemoryCache(\`appid_\${appId}\`, decryptedToken, refreshedTokenData.expires_in);
-          return decryptedToken;
-        }
-      } else {
-        const decryptedToken = this.decryptToken(tokenData.access_token);
-        this.updateMemoryCache(\`appid_\${appId}\`, decryptedToken, tokenData.expires_in);
-        return decryptedToken;
-      }
-    } catch (error) {
-      console.error(\`🚨 Failed to get valid User Access Token for App ID \${appId}:\`, error.message);
-      throw error;
-    }
-  }
+    // Retrieve token
+    const retrieved = await provider.get(appId);
+    expect(retrieved.refreshToken).toBe(refreshToken);
+    expect(retrieved.version).toBe(version);
+    expect(retrieved.updatedAt).toBe(stored.updatedAt);
+  });
 
-  /**
-   * Refresh User Access Token by App ID using Refresh Token
-   */
-  async renewUserAccessTokenByAppId(appId, tokenData, options = {}) {
-    try {
-      console.log(\`🔄 Refreshing User Access Token for App ID: \${appId}\`);
+  it('should encrypt stored tokens (not plain text)', async () => {
+    const appId = 'encryption-test-app';
+    const refreshToken = 'secret-refresh-token-to-encrypt';
+    const version = 1;
 
-      // Decrypt refresh token
-      const refreshToken = this.decryptToken(tokenData.refresh_token);
+    await provider.set(appId, refreshToken, version);
 
-      // Prepare OAuth request
-      const auth = Buffer.from(\`\${this.clientId}:\${this.clientSecret}\`).toString('base64');
-      const now = new Date().toISOString();
+    // Read raw file content to verify encryption
+    const rawContent = await fs.readFile(testFilePath, 'utf8');
+    const state = JSON.parse(rawContent);
+    
+    expect(rawContent).not.toContain(refreshToken); // Token should not appear in plain text
+    expect(state.apps[appId].refreshTokenEnc).toMatch(/^gcm:/); // Should use GCM encryption format
+  });
 
-      let requestBody = \`grant_type=refresh_token&refresh_token=\${encodeURIComponent(refreshToken)}\`;
-      
-      // Add scope if provided
-      if (options.scope) {
-        requestBody += \`&scope=\${encodeURIComponent(options.scope)}\`;
-      }
+  it('should handle concurrent operations with locking', async () => {
+    const appId = 'concurrent-test-app';
+    const operations = [];
 
-      const response = await axios.post(
-        this.tokenUrl,
-        requestBody,
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': \`Basic \${auth}\`,
-          }
-        }
+    // Start multiple concurrent set operations
+    for (let i = 0; i < 5; i++) {
+      operations.push(
+        provider.set(appId, `token-${i}`, i)
       );
-
-      const data = response.data;
-
-      // Update token data in database by account name (since saveUserAccessToken uses account_name)
-      await this.saveUserAccessToken(tokenData.account_name, {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || refreshToken,
-        accessTokenUpdatedDate: now,
-        refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
-        expiresIn: data.expires_in,
-        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
-        tokenType: data.token_type || 'Bearer'
-      });
-
-      console.log(\`✅ User Access Token refreshed successfully for App ID \${appId} (\${tokenData.account_name})\`);
-      
-      // Clear related caches
-      this.memoryCache.delete(\`token_appid_\${appId}\`);
-      this.cacheExpiration.delete(\`token_appid_\${appId}\`);
-      this.memoryCache.delete(\`token_\${tokenData.account_name}\`);
-      this.cacheExpiration.delete(\`token_\${tokenData.account_name}\`);
-      
-      return data;
-    } catch (error) {
-      console.error(\`🚨 Failed to refresh User Access Token for App ID \${appId}:\`, error.message);
-      if (error.response?.data) {
-        console.error('eBay API error response:', error.response.data);
-      }
-      throw new Error(\`eBay token refresh failed: \${error.response?.data?.error_description || error.message}\`);
-    }
-  }
-
-  /**
-   * Check if User Refresh Token is expired
-   */
-  isRefreshTokenExpired(tokenData, bufferSeconds = 86400 * 7) {
-    if (!tokenData.refresh_token_updated_date || !tokenData.refresh_token_expires_in) {
-      return true;
     }
 
-    const updatedTime = new Date(tokenData.refresh_token_updated_date).getTime();
-    const expirationTime = updatedTime + (tokenData.refresh_token_expires_in * 1000);
-    const currentTime = Date.now();
+    const results = await Promise.all(operations);
     
-    return currentTime > (expirationTime - bufferSeconds * 1000);
-  }
+    // All operations should complete successfully
+    expect(results.length).toBe(5);
+    results.forEach(result => {
+      expect(result.refreshToken).toMatch(/^token-\d$/);
+      expect(result.version).toBeGreaterThanOrEqual(0);
+      expect(result.updatedAt).toBeDefined();
+    });
 
-  /**
-   * Derive encryption key for database token storage
-   */
-  deriveEncryptionKey() {
-    const masterKey = this.masterKey;
-    const machineId = process.env.COMPUTERNAME || process.env.HOSTNAME || 'default-machine';
+    // Final state should contain last written token
+    const final = await provider.get(appId);
+    expect(final).toBeDefined();
+    expect(final.refreshToken).toMatch(/^token-\d$/);
+  });
+
+  it('should handle withLock timeout', async () => {
+    const appId = 'timeout-test-app';
     
-    return crypto.scryptSync(
-      masterKey + machineId,
-      'ebay-database-tokens-salt-v1',
-      32
-    );
-  }
+    // Create a lock manually to simulate timeout
+    await fs.mkdir(path.dirname(testFilePath), { recursive: true });
+    await fs.writeFile(provider.lockFile, 'manual-lock');
 
-  /**
-   * Encrypt token data with AES-256-GCM
-   */
-  encryptToken(tokenData) {
-    if (!this.encryptionEnabled || !tokenData) {
-      return tokenData;
-    }
+    const lockOperation = provider.withLock(appId, async () => {
+      return 'should-not-complete';
+    }, 100); // 100ms timeout
 
-    try {
-      const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-      cipher.setAAD(Buffer.from('ebay-token-data'));
-      
-      const encrypted = Buffer.concat([
-        cipher.update(tokenData, 'utf8'),
-        cipher.final()
-      ]);
-      
-      const authTag = cipher.getAuthTag();
+    await expect(lockOperation).rejects.toThrow('FileJsonTokenProvider: lock timeout');
 
-      // Return format: algorithm:iv:authTag:encryptedData (all base64)
-      return \`aes-256-gcm:\${iv.toString('base64')}:\${authTag.toString('base64')}:\${encrypted.toString('base64')}\`;
-    } catch (error) {
-      console.error('🚨 Failed to encrypt token:', error.message);
-      return tokenData;
-    }
-  }
+    // Cleanup manual lock
+    await fs.unlink(provider.lockFile);
+  });
 
-  /**
-   * Decrypt token data
-   */
-  decryptToken(encryptedData) {
-    if (!this.encryptionEnabled || !encryptedData) {
-      return encryptedData;
-    }
-
-    try {
-      // Check if data is encrypted (has our format)
-      if (!encryptedData.includes(':')) {
-        // Plain text token, return as-is
-        return encryptedData;
+  it('should maintain backward compatibility with plain text tokens', async () => {
+    const appId = 'backward-compat-app';
+    
+    // Manually create old format state (plain text)
+    const oldState = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      apps: {
+        [appId]: {
+          refreshToken: 'plain-text-token', // Old format (not encrypted)
+          version: 1,
+          updatedAt: new Date().toISOString()
+        }
       }
+    };
 
-      const parts = encryptedData.split(':');
-      if (parts.length !== 4 || parts[0] !== 'aes-256-gcm') {
-        // Not our encrypted format, return as-is
-        return encryptedData;
-      }
+    await fs.mkdir(path.dirname(testFilePath), { recursive: true });
+    await fs.writeFile(testFilePath, JSON.stringify(oldState, null, 2));
 
-      const [, ivBase64, authTagBase64, encryptedBase64] = parts;
-      
-      const iv = Buffer.from(ivBase64, 'base64');
-      const encrypted = Buffer.from(encryptedBase64, 'base64');
-      
-      const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-      decipher.setAuthTag(Buffer.from(authTagBase64, 'base64'));
-      decipher.setAAD(Buffer.from('ebay-token-data'));
-      
-      const decrypted = Buffer.concat([
-        decipher.update(encrypted),
-        decipher.final()
-      ]);
-      
-      return decrypted.toString('utf8');
-    } catch (error) {
-      console.error('🚨 Failed to decrypt token:', error.message);
-      // If decryption fails, return original data (might be plain text)
-      return encryptedData;
-    }
-  }
-
-  /**
-   * Get comprehensive User Access Token information including metadata
-   * @param {string} appId - The eBay App ID to get token info for
-   * @returns {Promise<Object>} User token information object
-   */
-  async getUserTokenInfo(appId) {
-    try {
-      console.log(\`🔍 Getting token info for App ID: \${appId}\`);
-      
-      const tokenData = await this.getTokenByAppId(appId);
-      
-      if (!tokenData) {
-        throw new Error(\`No token found for App ID: \${appId}\`);
-      }
-
-      // Calculate expiration date
-      const accessTokenUpdatedDate = new Date(tokenData.access_token_updated_date);
-      const expiresAt = new Date(accessTokenUpdatedDate.getTime() + (tokenData.expires_in * 1000));
-      
-      // Decrypt tokens for return (be careful with sensitive data)
-      const decryptedAccessToken = this.decryptToken(tokenData.access_token);
-      const decryptedRefreshToken = this.decryptToken(tokenData.refresh_token);
-      
-      const tokenInfo = {
-        access_token: decryptedAccessToken,
-        refresh_token: decryptedRefreshToken,
-        expires_at: expiresAt,
-        account_name: tokenData.account_name,
-        token_type: 'User Access Token',
-        access_token_updated_date: accessTokenUpdatedDate,
-        expires_in: tokenData.expires_in,
-        refresh_token_updated_date: new Date(tokenData.refresh_token_updated_date),
-        refresh_token_expires_in: tokenData.refresh_token_expires_in
-      };
-
-      console.log(\`✅ User Access Token info retrieved for account: \${tokenData.account_name}\`);
-      return tokenInfo;
-      
-    } catch (error) {
-      console.error(\`🚨 Failed to get User Access Token info for App ID \${appId}:\`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get User Access Token expiration information
-   * @param {string} appId - The eBay App ID to check expiration for
-   * @returns {Promise<Object>} User token expiration information object
-   */
-  async getUserTokenExpiration(appId) {
-    try {
-      console.log(\`⏰ Getting User Access Token expiration info for App ID: \${appId}\`);
-      
-      const tokenData = await this.getTokenByAppId(appId);
-      
-      if (!tokenData) {
-        throw new Error(\`No token found for App ID: \${appId}\`);
-      }
-
-      // Calculate expiration times
-      const accessTokenUpdatedDate = new Date(tokenData.access_token_updated_date);
-      const expiresAt = new Date(accessTokenUpdatedDate.getTime() + (tokenData.expires_in * 1000));
-      const now = Date.now();
-      const expiresIn = Math.max(0, Math.floor((expiresAt.getTime() - now) / 1000));
-      
-      // Calculate percentage remaining (0-100)
-      const totalLifetime = tokenData.expires_in;
-      const percentageRemaining = totalLifetime > 0 ? Math.max(0, Math.min(100, (expiresIn / totalLifetime) * 100)) : 0;
-      
-      const expirationInfo = {
-        expiresAt: expiresAt,
-        expiresIn: expiresIn,
-        isExpired: this.isAccessTokenExpired(tokenData),
-        percentageRemaining: Math.round(percentageRemaining * 100) / 100 // Round to 2 decimal places
-      };
-
-      console.log(\`✅ User Access Token expiration info: \${expiresIn}s remaining (\${percentageRemaining.toFixed(1)}%)\`);
-      return expirationInfo;
-      
-    } catch (error) {
-      console.error(\`🚨 Failed to get User Access Token expiration for App ID \${appId}:\`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get the eBay account name associated with a User Access Token
-   * @param {string} appId - The eBay App ID to get account name for
-   * @returns {Promise<string>} The eBay account name
-   */
-  async getUserAccountName(appId) {
-    try {
-      console.log(\`👤 Getting account name for App ID: \${appId}\`);
-      
-      const tokenData = await this.getTokenByAppId(appId);
-      
-      if (!tokenData) {
-        throw new Error(\`No token found for App ID: \${appId}\`);
-      }
-
-      const accountName = tokenData.account_name;
-      console.log(\`✅ Account name retrieved: \${accountName}\`);
-      return accountName;
-      
-    } catch (error) {
-      console.error(\`🚨 Failed to get account name for App ID \${appId}:\`, error.message);
-      throw error;
-    }
-  }
-
-  // Additional methods: saveUserAccessToken, getTokenByAppId, etc.
-  // (See full implementation for complete methods)
-}
-
-export default UserAccessToken_AuthorizationCodeManager;
+    // Should be able to read old format
+    const retrieved = await provider.get(appId);
+    expect(retrieved.refreshToken).toBe('plain-text-token');
+    expect(retrieved.version).toBe(1);
+  });
+});
 ```
 
 ---
+
+## Key Features Demonstrated
+
+### 🌟 1. **NEW: Provider Abstraction Pattern**
+```javascript
+// Abstract base class for extensible token management
+export class TokenProvider {
+  async get(appId) { /* get refresh token record */ }
+  async set(appId, refreshToken, version) { /* set with version control */ }
+  async withLock(appId, fn, ttlMs) { /* distributed locking */ }
+}
+
+// Production implementation with full SSOT capabilities
+export class FileJsonTokenProvider extends TokenProvider {
+  // AES-256-GCM encryption with AAD
+  // Atomic file operations with distributed locking
+  // Version-based optimistic locking
+  // Machine-independent encryption keys
+}
+```
+
+### 🌟 2. **NEW: Centralized Token Management (SSOT)**
+```javascript
+// Constructor integration - zero breaking changes
+this.tokenProvider = options.tokenProvider || (
+  options.ssotJsonPath
+    ? new FileJsonTokenProvider({
+        filePath: options.ssotJsonPath,
+        masterKey: options.masterKey,
+        namespace: options.tokenNamespace
+      })
+    : null
+);
+```
+
+### 🛡️ 3. **NEW: Automatic Invalid Grant Recovery**
+```javascript
+// Enhanced refresh with automatic recovery
+if (this.tokenProvider && error.response?.data?.error === 'invalid_grant') {
+  console.warn(`⚠️ Invalid grant detected, attempting recovery from SSOT...`);
+  
+  // Clear local caches and retry with latest SSOT token
+  const latest = await this.tokenProvider.get(appId);
+  if (latest?.refreshToken) {
+    // Retry with fresh token and update all systems
+    const response = await doRefresh(latest.refreshToken);
+    await this.tokenProvider.set(appId, newRT, newVersion);
+    // ... update local database and caches
+  }
+}
+```
+
+### 4. **Enhanced Refresh Token Environment Variable Support**
+```javascript
+// From config.js - NEW SSOT configuration
+initialRefreshToken: options.initialRefreshToken || process.env.EBAY_INITIAL_REFRESH_TOKEN,
+ssotJsonPath: options.ssotJsonPath || process.env.OAUTH_SSOT_JSON,
+tokenNamespace: options.tokenNamespace || process.env.TOKEN_NAMESPACE || 'ebay-oauth'
+
+// Auto-initialize refresh token if provided
+if (this.initialRefreshToken) {
+  this.initializeRefreshToken();
+}
+```
+
+### 5. **5-Layer Token Retrieval System**
+```javascript
+// Enhanced with SSOT coordination
+// Layer 1: Memory cache (~1ms)
+// Layer 2: LocalSharedTokenManager JSON file (~10ms)  
+// Layer 3: SQLite database (~50ms)
+// Layer 4: SSOT provider coordination (~100ms)
+// Layer 5: eBay API refresh (~500ms)
+
+// Priority in refresh operations:
+// 1) Get latest refresh token from SSOT if available
+let rtRecord = null;
+if (this.tokenProvider) {
+  rtRecord = await this.tokenProvider.get(appId);
+}
+const refreshToken = rtRecord?.refreshToken || this.decryptToken(tokenData.refresh_token);
+```
+
+### 6. **Distributed Locking with Atomic Operations**
+```javascript
+// File-based locking compatible with NFS/SMB
+async withLock(appId, fn, ttlMs = 5000) {
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  // Atomic lock acquisition with timeout
+  await fs.writeFile(this.lockFile, token, { flag: 'wx' });
+  
+  try {
+    return await fn();
+  } finally {
+    // Safe lock release with ownership verification
+    const cur = await fs.readFile(this.lockFile, 'utf8');
+    if (cur === token) await fs.unlink(this.lockFile);
+  }
+}
+```
+
+### 7. **Enhanced Encryption Security**
+```javascript
+// Database: AES-256-GCM with AAD (better security)
+const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+cipher.setAAD(Buffer.from('ebay-token-data'));
+return `aes-256-gcm:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
+
+// SSOT: AES-256-GCM with machine-independent keys (for sharing)
+this.encKey = crypto.scryptSync(masterKey, 'ebay-ssot-tokens-salt-v1', 32);
+cipher.setAAD(Buffer.from('ebay-ssot'));
+return `gcm:${iv.toString('base64')}:${tag.toString('base64')}:${enc.toString('base64')}`;
+
+// File: AES-256-CBC (compatibility)
+const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
+```
+
+## Environment Variables Support
+
+### Required Environment Variables
+```bash
+EBAY_CLIENT_ID=your_ebay_client_id
+EBAY_CLIENT_SECRET=your_ebay_client_secret
+EBAY_MASTER_KEY=your_secure_master_key_change_me
+```
+
+### NEW: Refresh Token Setup
+```bash
+# Initial Refresh Token for first-time setup
+EBAY_INITIAL_REFRESH_TOKEN=your_manual_refresh_token_from_browser_oauth
+```
+
+### 🌟 NEW: Centralized Token Management (SSOT)
+```bash
+# Centralized JSON (SSOT) Configuration
+OAUTH_SSOT_JSON=/var/secure/ebay/refresh-ssot.json
+TOKEN_NAMESPACE=ebay-oauth
+```
+
+## Important Constraints
+
+⚠️ **Critical Limitation**: User Refresh Tokens cannot be generated programmatically via API. They must be obtained through manual browser-based OAuth flow. This library manages them once obtained, but cannot generate them automatically.
+
+## 🌟 NEW: Multi-Package Coordination Features
+
+### SSOT Benefits
+1. **Single Source of Truth**: One JSON file coordinates refresh tokens across multiple packages
+2. **Automatic Recovery**: Invalid grant errors trigger automatic retry with latest token
+3. **Distributed Locking**: Prevents race conditions during concurrent token operations
+4. **Version Control**: Optimistic locking prevents conflicts between packages
+5. **Machine-Independent**: Encryption keys work across different servers/containers
+6. **Backward Compatible**: Zero breaking changes to existing APIs
+
+### Performance Impact
+- **Response Time**: +10-15% for SSOT operations (due to distributed locking)
+- **Memory Usage**: +15% for Provider instances
+- **I/O Operations**: +53% for SSOT coordination
+- **Reliability**: Significant improvement in multi-package scenarios
+
+## Token Type Clarity
+
+### Application Access Tokens (Public APIs)
+- **getBrowseApiToken()** - For product search, item details
+- **getTaxonomyApiToken()** - For category hierarchies, metadata
+- Short-lived (~2 hours), no refresh mechanism needed
+
+### User Access Tokens (Account-Specific APIs)  
+- **getTradingApiToken()** - For listing, bidding, account operations (🌟 **now with SSOT support**)
+- **getUserTokenInfo()** - Get User token metadata
+- **getUserTokenExpiration()** - Check User token expiration
+- **getUserAccountName()** - Get associated eBay account name
+- Short-lived (~2 hours), renewable via User Refresh Token
+
+## Usage Examples
+
+### 🌟 NEW: SSOT-Enabled Usage
+```javascript
+import { 
+  getTradingApiToken, 
+  getBrowseApiToken, 
+  getUserTokenInfo,
+  checkRefreshTokenValidity,
+  FileJsonTokenProvider,
+  UserAccessToken_AuthorizationCodeManager
+} from 'ebay-oauth-token-manager';
+
+// Traditional usage (unchanged)
+const browseToken = await getBrowseApiToken();
+const tradingToken = await getTradingApiToken('your-app-id'); // Now with SSOT coordination!
+
+// Manual SSOT configuration for advanced use cases
+const tokenManager = new UserAccessToken_AuthorizationCodeManager({
+  clientId: 'your-client-id',
+  clientSecret: 'your-client-secret',
+  masterKey: 'your-master-key',
+  ssotJsonPath: '/var/secure/ebay/refresh-ssot.json',  // Enable SSOT
+  tokenNamespace: 'production-ebay-oauth'
+});
+
+const token = await tokenManager.getUserAccessTokenByAppId('app-id');
+// Automatic invalid_grant recovery if conflicts occur
+```
+
+### Environment-Based SSOT Setup
+```bash
+# .env file
+EBAY_CLIENT_ID=your_client_id
+EBAY_CLIENT_SECRET=your_client_secret
+EBAY_MASTER_KEY=your_secure_master_key
+EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token_from_browser_oauth
+OAUTH_SSOT_JSON=/var/secure/ebay/refresh-ssot.json
+TOKEN_NAMESPACE=production-ebay-oauth
+```
+
+```javascript
+// Zero configuration - SSOT automatically enabled
+const token = await getTradingApiToken('your-app-id');
+```
+
+## Storage Locations
+
+- **Windows**: `%PROGRAMDATA%\\EStocks\\tokens\\ebay-tokens.encrypted.json`
+- **Linux/Mac**: `$HOME/EStocks/tokens/ebay-tokens.encrypted.json`  
+- **SQLite DB**: `./database/ebay_tokens.sqlite`
+- **🌟 NEW: SSOT JSON**: `/var/secure/ebay/refresh-ssot.json` (configurable)
+
+---
+
+This library provides a robust, secure, and performant solution for eBay OAuth 2.0 token management with enterprise-grade features including encryption, caching, automatic failover, refresh token initialization via environment variables, **and now centralized token coordination with automatic conflict resolution for multi-package deployments**.

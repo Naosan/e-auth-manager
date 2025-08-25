@@ -48,8 +48,20 @@ export function loadConfig(options = {}) {
     masterKey: options.masterKey || process.env.EBAY_MASTER_KEY,
     
     // API URLs (usually don't need to change)
-    tokenUrl: options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token',
-    scope: options.scope || 'https://api.ebay.com/oauth/api_scope'
+    tokenUrl: options.tokenUrl || (
+      (options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION')
+        .toUpperCase() === 'SANDBOX'
+        ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
+        : 'https://api.ebay.com/identity/v1/oauth2/token'
+    ),
+    scope: options.scope || 'https://api.ebay.com/oauth/api_scope',
+    
+    // Initial Refresh Token for first-time setup
+    initialRefreshToken: options.initialRefreshToken || process.env.EBAY_INITIAL_REFRESH_TOKEN,
+    
+    // Centralized JSON (SSOT) configuration
+    ssotJsonPath: options.ssotJsonPath || process.env.OAUTH_SSOT_JSON,
+    tokenNamespace: options.tokenNamespace || process.env.TOKEN_NAMESPACE || 'ebay-oauth'
   };
 
   // Validate encryption key if encryption is enabled
@@ -70,8 +82,12 @@ export function getExampleConfig() {
     clientSecret: 'your_ebay_client_secret',
     defaultAppId: 'your_default_app_id',
     masterKey: 'your_secure_master_key_change_me',
+    initialRefreshToken: 'your_manual_refresh_token_from_browser_oauth',
     useDatabase: true,
     encryptionEnabled: true,
-    environment: 'PRODUCTION'
+    environment: 'PRODUCTION',
+    // Centralized JSON (SSOT) configuration
+    ssotJsonPath: '/var/secure/ebay/refresh-ssot.json',
+    tokenNamespace: 'ebay-oauth'
   };
 }
