@@ -10,11 +10,8 @@ class LocalSharedTokenManager {
       throw new Error('masterKey is required for LocalSharedTokenManager. Pass it as option or set EBAY_MASTER_KEY environment variable.');
     }
 
-    // Token file path - configurable
-    this.tokenFile = options.tokenFilePath || path.join(
-      process.env.PROGRAMDATA || process.env.HOME || process.env.USERPROFILE || '/tmp',
-      'EStocks/tokens/ebay-tokens.encrypted.json'
-    );
+    // Token file path - configurable with migration support
+    this.tokenFile = options.tokenFilePath || this.getDefaultTokenFilePath();
     this.lockFile = `${this.tokenFile}.lock`;
     
     // Encryption configuration
@@ -188,6 +185,34 @@ class LocalSharedTokenManager {
     }
     
     throw new Error('Failed to acquire lock after maximum attempts');
+  }
+
+  /**
+   * Get default token file path with legacy migration support
+   * @returns {string} Default token file path
+   */
+  getDefaultTokenFilePath() {
+    const basePath = process.env.PROGRAMDATA || process.env.HOME || process.env.USERPROFILE || '/tmp';
+    
+    // New preferred path
+    const newPath = path.join(basePath, 'ebay-oauth-tokens/ebay-tokens.encrypted.json');
+    
+    // Legacy path (for backwards compatibility)
+    const legacyPath = path.join(basePath, 'EStocks/tokens/ebay-tokens.encrypted.json');
+    
+    try {
+      // Check if legacy path exists (synchronously for constructor)
+      const fs = require('fs');
+      if (fs.existsSync(legacyPath)) {
+        console.log('🔄 Using existing legacy path: EStocks/tokens/ (consider migrating to ebay-oauth-tokens/)');
+        return legacyPath;
+      }
+    } catch (error) {
+      // If check fails, use new path
+    }
+    
+    // Use new path for fresh installations
+    return newPath;
   }
 
   deriveEncryptionKey() {

@@ -150,6 +150,66 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
 
 ---
 
+## 💾 Token Storage Details
+
+### Storage Locations
+
+The library automatically creates storage directories and manages token persistence across multiple locations:
+
+#### 1. SQLite Database (Primary Storage)
+**Location**: `./database/ebay_tokens.sqlite` (configurable)
+**Contains**:
+- `access_token` - Encrypted access tokens (AES-256-CBC)
+- `refresh_token` - Encrypted refresh tokens (AES-256-CBC) 
+- `account_name` - eBay account identifier (unique key)
+- `app_id` - eBay application ID
+- `expires_in` - Token expiration time (seconds)
+- Token metadata and timestamps
+
+#### 2. Encrypted JSON File (Dual Storage)
+**Windows**: `%PROGRAMDATA%\ebay-oauth-tokens\ebay-tokens.encrypted.json`
+**Linux/Mac**: `$HOME/ebay-oauth-tokens/ebay-tokens.encrypted.json`
+**Contains**:
+- Complete token data (access + refresh tokens)
+- Expiration information and timestamps
+- AES-256-CBC encryption with machine-specific keys
+
+#### 3. SSOT Provider (Multi-Instance Coordination)
+**Location**: Configurable via `ssotJsonPath` option
+**Contains**:
+- `refreshTokenEnc` - Encrypted refresh tokens only (AES-256-GCM)
+- Version control for coordinated updates
+- Process-safe locking mechanisms
+
+### Token Types Stored
+
+| Token Type | Storage Location | Encryption | Lifetime | Purpose |
+|------------|------------------|------------|----------|---------|
+| **User Access Token** | Database + JSON | AES-256-CBC/GCM | ~2 hours | Trading API access |
+| **User Refresh Token** | Database + JSON + SSOT | AES-256-CBC/GCM | ~18 months | Token renewal |
+| **Application Access Token** | Memory only | None | ~2 hours | Browse API access |
+
+### Automatic Directory Creation
+
+The library automatically creates necessary directories with proper permissions:
+
+```javascript
+// Windows paths (priority order)
+process.env.PROGRAMDATA || process.env.USERPROFILE || '/tmp'
+  └── ebay-oauth-tokens/
+
+// Database directory
+./database/ (or custom path)
+  └── ebay_tokens.sqlite
+
+// SSOT directory (if configured)
+/custom/path/
+  └── shared-tokens.json
+  └── .locks/ (for process coordination)
+```
+
+---
+
 ## 🔐 Security Features
 
 ### AES-256-GCM Encryption
