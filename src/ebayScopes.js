@@ -131,18 +131,18 @@ export function validateScopeSubset(requestedScopes, grantedScopes) {
  */
 export function getScopesForApiType(apiType, readOnly = false) {
   switch (apiType.toLowerCase()) {
-    case 'trading':
-      return EBAY_SCOPES.TRADING_API;
-    case 'rest':
-      return EBAY_SCOPES.REST_API_BASIC;
-    case 'sell':
-      return readOnly ? EBAY_SCOPES.SELL_READONLY : EBAY_SCOPES.SELL_FULL;
-    case 'buy':
-      return EBAY_SCOPES.BUY_APIS;
-    case 'commerce':
-      return EBAY_SCOPES.COMMERCE_APIS;
-    default:
-      return EBAY_SCOPES.REST_API_BASIC;
+  case 'trading':
+    return EBAY_SCOPES.TRADING_API;
+  case 'rest':
+    return EBAY_SCOPES.REST_API_BASIC;
+  case 'sell':
+    return readOnly ? EBAY_SCOPES.SELL_READONLY : EBAY_SCOPES.SELL_FULL;
+  case 'buy':
+    return EBAY_SCOPES.BUY_APIS;
+  case 'commerce':
+    return EBAY_SCOPES.COMMERCE_APIS;
+  default:
+    return EBAY_SCOPES.REST_API_BASIC;
   }
 }
 

@@ -8,7 +8,7 @@ import { loadConfig } from './config.js';
 const config = loadConfig();
 
 // Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
-let defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
+const defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
 console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
 
 // Export classes for direct access if needed
@@ -78,7 +78,7 @@ export const getTaxonomyApiToken = (options = {}) => {
  * @param {Object} options - Configuration options
  * @returns {Promise<string>} - Trading API用 User Access Token
  */
-export const getTradingApiToken = (appId, options = {}) => {
+export const getTradingApiToken = (appId) => {
   console.log('🔑 Getting Trading API User Access Token');
   if (!appId) {
     // Use eBay official naming convention

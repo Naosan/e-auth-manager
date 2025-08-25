@@ -95,7 +95,11 @@ class LocalSharedTokenManager {
       const tempFile = `${this.tokenFile}.tmp`;
       await fs.writeFile(tempFile, JSON.stringify(this.encryptData(data), null, 2));
       await fs.rename(tempFile, this.tokenFile);
-      try { await fs.chmod(this.tokenFile, 0o600); } catch {}
+      try { 
+        await fs.chmod(this.tokenFile, 0o600); 
+      } catch (chmodError) {
+        console.debug('Chmod warning:', chmodError.message);
+      }
       console.log('✅ Token file saved successfully');
     } catch (error) {
       console.error('🚨 Failed to save token file:', error.message);
@@ -250,7 +254,7 @@ class LocalSharedTokenManager {
       
       for (const tokenId of checkOrder) {
         const token = data.tokens[tokenId];
-        if (!token) continue;
+        if (!token) {continue;}
 
         const isRefreshExpired = this.isRefreshTokenExpired(token);
         
