@@ -42,7 +42,9 @@
     "eslint": "^8.57.0"
   },
   "scripts": {
-    "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:unix": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
+    "test:windows": "set NODE_OPTIONS=--experimental-vm-modules&& jest",
     "lint": "eslint src/",
     "example:database": "node examples/database-example.js",
     "example:file": "node examples/file-example.js"
