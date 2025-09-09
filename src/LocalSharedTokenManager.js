@@ -192,20 +192,42 @@ class LocalSharedTokenManager {
    * @returns {string} Default token file path
    */
   getDefaultTokenFilePath() {
-    const basePath = process.env.PROGRAMDATA || process.env.HOME || process.env.USERPROFILE || '/tmp';
+    let basePath;
+    
+    // Cross-platform base path determination following npm/CLI tool conventions
+    if (process.platform === 'win32') {
+      // Windows: Use LOCALAPPDATA for user-specific data (follows npm/yarn pattern)
+      // LOCALAPPDATA avoids roaming profile sync issues in corporate environments
+      basePath = process.env.LOCALAPPDATA || process.env.APPDATA || process.env.USERPROFILE || path.join('C:', 'Users', 'Default', 'AppData', 'Local');
+    } else if (process.platform === 'darwin') {
+      // macOS: Use Application Support directory
+      basePath = path.join(process.env.HOME || '~', 'Library/Application Support');
+    } else {
+      // Linux/Unix: Follow XDG Base Directory specification
+      basePath = process.env.XDG_DATA_HOME || path.join(process.env.HOME || '~', '.local/share');
+    }
     
     // New preferred path
     const newPath = path.join(basePath, 'ebay-oauth-tokens/ebay-tokens.encrypted.json');
     
-    // Legacy path (for backwards compatibility)
-    const legacyPath = path.join(basePath, 'EStocks/tokens/ebay-tokens.encrypted.json');
+    // Legacy paths for backwards compatibility (check in priority order)
+    const legacyPaths = [
+      // Previous PROGRAMDATA location
+      process.platform === 'win32' 
+        ? path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'ebay-oauth-tokens/ebay-tokens.encrypted.json')
+        : null,
+      // Original EStocks location  
+      path.join(basePath, 'EStocks/tokens/ebay-tokens.encrypted.json')
+    ].filter(Boolean);
     
     try {
-      // Check if legacy path exists (synchronously for constructor)
+      // Check if any legacy path exists (synchronously for constructor)
       const fs = require('fs');
-      if (fs.existsSync(legacyPath)) {
-        console.log('🔄 Using existing legacy path: EStocks/tokens/ (consider migrating to ebay-oauth-tokens/)');
-        return legacyPath;
+      for (const legacyPath of legacyPaths) {
+        if (fs.existsSync(legacyPath)) {
+          console.log(`🔄 Using existing legacy path: ${path.dirname(legacyPath)} (consider migrating to new location)`);
+          return legacyPath;
+        }
       }
     } catch (error) {
       // If check fails, use new path
@@ -218,7 +240,15 @@ class LocalSharedTokenManager {
   deriveEncryptionKey() {
     try {
       const masterKey = this.masterKey;
-      const machineId = process.env.COMPUTERNAME || process.env.HOSTNAME || 'default-machine';
+      // Cross-platform machine identifier
+      let machineId;
+      
+      if (process.platform === 'win32') {
+        machineId = process.env.COMPUTERNAME || process.env.USERDOMAIN || 'windows-machine';
+      } else {
+        // For Unix-like systems (Linux, macOS)
+        machineId = process.env.HOSTNAME || process.env.USER || 'unix-machine';
+      }
       
       return crypto.scryptSync(
         masterKey + machineId,

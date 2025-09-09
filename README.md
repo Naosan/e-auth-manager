@@ -15,6 +15,7 @@ This library provides robust OAuth 2.0 token management for eBay APIs with sophi
 ### 🎯 Key Benefits
 
 - **Zero Configuration**: Works out-of-the-box with automatic dual storage
+- **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
 - **Production Ready**: Battle-tested multi-layer caching and error recovery
 - **Enterprise Security**: AES-256-GCM encryption with machine-specific keys
 - **Multi-Instance Coordination**: SSOT (Single Source of Truth) prevents token conflicts
@@ -191,12 +192,21 @@ The library automatically creates storage directories and manages token persiste
 
 ### Automatic Directory Creation
 
-The library automatically creates necessary directories with proper permissions:
+The library automatically creates necessary directories with proper permissions across all platforms:
 
 ```javascript
-// Windows paths (priority order)
-process.env.PROGRAMDATA || process.env.USERPROFILE || '/tmp'
-  └── ebay-oauth-tokens/
+// Cross-platform token storage paths (follows npm/CLI tool conventions):
+
+// Windows (User-specific data in LOCALAPPDATA - prevents roaming sync issues)
+%LOCALAPPDATA%\ebay-oauth-tokens\     // C:\Users\[USER]\AppData\Local\ebay-oauth-tokens\
+%APPDATA%\ebay-oauth-tokens\          // Fallback: C:\Users\[USER]\AppData\Roaming\ebay-oauth-tokens\
+
+// macOS (Application Support directory)
+~/Library/Application Support/ebay-oauth-tokens/
+
+// Linux/Unix (XDG Base Directory specification)
+~/.local/share/ebay-oauth-tokens/     // Default location
+$XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 
 // Database directory
 ./database/ (or custom path)
@@ -206,6 +216,10 @@ process.env.PROGRAMDATA || process.env.USERPROFILE || '/tmp'
 /custom/path/
   └── shared-tokens.json
   └── .locks/ (for process coordination)
+
+// Legacy migration support (automatically detected)
+// - Previous PROGRAMDATA location (Windows)
+// - Original EStocks/tokens/ location (all platforms)
 ```
 
 ---
