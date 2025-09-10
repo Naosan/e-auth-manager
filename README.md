@@ -55,6 +55,9 @@ EBAY_CLIENT_SECRET=your_ebay_client_secret
 # Security (Recommended)
 EBAY_MASTER_KEY=your_secure_256bit_encryption_key
 
+# Optional - Initial refresh token (obtained via manual OAuth flow)
+EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
+
 # Optional - For multi-instance coordination
 OAUTH_SSOT_JSON=/secure/path/ebay-refresh-tokens.json
 TOKEN_NAMESPACE=my-app
