@@ -7,7 +7,7 @@ class LocalSharedTokenManager {
   constructor(options = {}) {
     // Validate required options for security
     if (!options.masterKey) {
-      throw new Error('masterKey is required for LocalSharedTokenManager. Pass it as option or set EBAY_MASTER_KEY environment variable.');
+      throw new Error('masterKey is required for LocalSharedTokenManager. Pass it as option or set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable.');
     }
 
     // Token file path - configurable with migration support

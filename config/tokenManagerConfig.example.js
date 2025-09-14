@@ -14,14 +14,10 @@ export const TOKEN_CONFIG = {
   // eBay API Environment
   environment: 'PRODUCTION', // or 'SANDBOX'
   
-  // Token Storage Strategy
-  useDatabase: true,          // Use SQLite database storage
-  useLegacyFile: false,       // Use encrypted file storage
-  
-  // Database Configuration (when useDatabase = true)
+  // Database Configuration
   databasePath: './database/ebay_tokens.sqlite',
   
-  // File Storage Configuration (when useLegacyFile = true)
+  // File Storage Configuration
   tokenFilePath: null, // Uses default OS-specific path if null
   
   // Security Configuration
