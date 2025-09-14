@@ -53,7 +53,7 @@ EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
 # Security (Recommended)
-EBAY_MASTER_KEY=your_secure_256bit_encryption_key
+EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_256bit_encryption_key
 
 # Optional - Initial refresh token (obtained via manual OAuth flow)
 EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
@@ -240,11 +240,11 @@ All tokens are encrypted using industry-standard AES-256-GCM with:
 
 ```javascript
 // Environment variable (recommended)
-EBAY_MASTER_KEY=your_256_bit_secure_key
+EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_256_bit_secure_key
 
 // Or via configuration
 const manager = new UserAccessToken_AuthorizationCodeManager({
-  masterKey: process.env.EBAY_MASTER_KEY
+  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
 });
 ```
 
@@ -308,8 +308,7 @@ await manager.setRefreshToken('your_refresh_token', 'account_name');
 
 ```javascript
 const manager = new UserAccessToken_AuthorizationCodeManager({
-  databasePath: './custom/path/tokens.sqlite',
-  useDatabase: true  // Enable SQLite storage
+  databasePath: './custom/path/tokens.sqlite'
 });
 ```
 
@@ -440,7 +439,7 @@ chmod 600 ./tokens/ebay_tokens.json
 ```javascript
 // Ensure all instances use same masterKey and ssotJsonPath
 const config = {
-  masterKey: process.env.EBAY_MASTER_KEY,  // Same across instances
+  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,  // Same across instances
   ssotJsonPath: '/shared/tokens.json'      // Shared location
 };
 ```

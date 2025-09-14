@@ -14,7 +14,6 @@ async function databaseExample() {
     // Create token manager with database storage
     const tokenManager = new UserAccessToken_AuthorizationCodeManager({
       ...config,
-      useDatabase: true,
       databasePath: './examples/database/ebay_tokens.sqlite'
     });
 
@@ -66,7 +65,7 @@ async function databaseExample() {
       console.log('2. Add your eBay API credentials:');
       console.log('   EBAY_CLIENT_ID=your_client_id');
       console.log('   EBAY_CLIENT_SECRET=your_client_secret');
-      console.log('   EBAY_MASTER_KEY=your_secure_master_key');
+      console.log('   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_master_key');
       console.log('3. Run the example again');
     }
     

@@ -42,7 +42,7 @@ class UserAccessToken_AuthorizationCodeManager {
     // Encryption key for token storage
     if (this.encryptionEnabled) {
       if (!options.masterKey) {
-        throw new Error('masterKey is required when encryption is enabled. Pass it as option or set EBAY_MASTER_KEY environment variable.');
+        throw new Error('masterKey is required when encryption is enabled. Pass it as option or set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable.');
       }
       this.masterKey = options.masterKey;
       this.encryptionKey = this.deriveEncryptionKey();

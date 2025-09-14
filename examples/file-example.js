@@ -74,7 +74,7 @@ async function fileExample() {
       console.log('\n💡 Setup Instructions:');
       console.log('1. Create a .env file in the package root');
       console.log('2. Add your master key:');
-      console.log('   EBAY_MASTER_KEY=your_secure_master_key');
+      console.log('   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_master_key');
       console.log('3. Optionally add eBay credentials for full functionality:');
       console.log('   EBAY_CLIENT_ID=your_client_id');
       console.log('   EBAY_CLIENT_SECRET=your_client_secret');

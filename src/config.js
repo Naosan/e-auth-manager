@@ -33,10 +33,6 @@ export function loadConfig(options = {}) {
     defaultAppId: options.defaultAppId || process.env.EBAY_CLIENT_ID,
     environment: options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
     
-    // Token storage configuration
-    useDatabase: options.useDatabase ?? (process.env.EBAY_USE_DATABASE_TOKENS === 'true'),
-    useLegacyFile: options.useLegacyFile ?? (process.env.EBAY_USE_LEGACY_TOKENS === 'true'),
-    
     // Database configuration
     databasePath: options.databasePath || process.env.EBAY_DATABASE_PATH || './database/ebay_tokens.sqlite',
     
@@ -45,7 +41,7 @@ export function loadConfig(options = {}) {
     
     // Encryption configuration
     encryptionEnabled: options.encryptionEnabled ?? true,
-    masterKey: options.masterKey || process.env.EBAY_MASTER_KEY,
+    masterKey: options.masterKey || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,
     
     // API URLs (usually don't need to change)
     tokenUrl: options.tokenUrl || (
@@ -66,7 +62,7 @@ export function loadConfig(options = {}) {
 
   // Validate encryption key if encryption is enabled
   if (config.encryptionEnabled && !config.masterKey) {
-    throw new Error('EBAY_MASTER_KEY environment variable is required when encryption is enabled. Set EBAY_MASTER_KEY or pass masterKey option.');
+    throw new Error('EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable is required when encryption is enabled. Set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY or pass masterKey option.');
   }
 
   return config;
@@ -83,7 +79,6 @@ export function getExampleConfig() {
     defaultAppId: 'your_default_app_id',
     masterKey: 'your_secure_master_key_change_me',
     initialRefreshToken: 'your_manual_refresh_token_from_browser_oauth',
-    useDatabase: true,
     encryptionEnabled: true,
     environment: 'PRODUCTION',
     // Centralized JSON (SSOT) configuration
