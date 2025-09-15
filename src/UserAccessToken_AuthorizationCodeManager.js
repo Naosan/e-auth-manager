@@ -38,6 +38,10 @@ class UserAccessToken_AuthorizationCodeManager {
     // In-memory cache for performance
     this.memoryCache = new Map();
     this.cacheExpiration = new Map();
+
+    // Track reset operations to avoid recursive purges
+    this._isResettingTokens = false;
+    this._skipNextResetDueToFingerprint = false;
     
     // Encryption key for token storage
     if (this.encryptionEnabled) {
@@ -46,6 +50,7 @@ class UserAccessToken_AuthorizationCodeManager {
       }
       this.masterKey = options.masterKey;
       this.encryptionKey = this.deriveEncryptionKey();
+      this.encryptionFingerprint = this.computeEncryptionFingerprint();
     }
     
     // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
@@ -171,7 +176,7 @@ class UserAccessToken_AuthorizationCodeManager {
       await this.db.exec('PRAGMA journal_mode = WAL');
       
       // Create table if it doesn't exist
-      await this.initializeDatabase();
+      await this.initializeDatabase(this.db);
     }
     return this.db;
   }
@@ -179,8 +184,10 @@ class UserAccessToken_AuthorizationCodeManager {
   /**
    * Initialize database schema
    */
-  async initializeDatabase() {
-    const db = await this.getDb();
+  async initializeDatabase(db = this.db) {
+    if (!db) {
+      throw new Error('Database connection is not initialized');
+    }
     await db.exec(`
       CREATE TABLE IF NOT EXISTS ebay_oauth_tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,9 +208,117 @@ class UserAccessToken_AuthorizationCodeManager {
     
     // Create index for app_id lookups
     await db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_ebay_oauth_tokens_app_id 
+      CREATE INDEX IF NOT EXISTS idx_ebay_oauth_tokens_app_id
       ON ebay_oauth_tokens(app_id)
     `);
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS oauth_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    if (this.encryptionEnabled) {
+      await this.ensureEncryptionFingerprint(db);
+    }
+  }
+
+  async ensureEncryptionFingerprint(db) {
+    const fingerprint = this.encryptionFingerprint || this.computeEncryptionFingerprint();
+    if (!fingerprint) {
+      return;
+    }
+
+    const existing = await db.get(`
+      SELECT value FROM oauth_metadata
+      WHERE key = ?
+    `, ['encryption_fingerprint']);
+
+    if (!existing) {
+      await this.storeEncryptionFingerprint(db, fingerprint);
+      return;
+    }
+
+    if (existing.value !== fingerprint) {
+      console.warn('⚠️ Encryption key fingerprint changed. Purging stored tokens...');
+      await this.resetAllTokens({ db, skipFingerprintUpdate: true, force: true });
+      this._skipNextResetDueToFingerprint = true;
+      await this.storeEncryptionFingerprint(db, fingerprint);
+    }
+  }
+
+  async storeEncryptionFingerprint(db, fingerprint) {
+    await db.run(`
+      INSERT INTO oauth_metadata (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+    `, ['encryption_fingerprint', fingerprint]);
+  }
+
+  computeEncryptionFingerprint() {
+    if (!this.encryptionEnabled || !this.encryptionKey) {
+      return null;
+    }
+    return crypto.createHash('sha256').update(this.encryptionKey).digest('hex');
+  }
+
+  async resetAllTokens({ db: providedDb = null, skipFingerprintUpdate = false, force = false } = {}) {
+    if (!force && this._skipNextResetDueToFingerprint) {
+      this._skipNextResetDueToFingerprint = false;
+      return;
+    }
+
+    if (!force && this._isResettingTokens) {
+      return;
+    }
+
+    let releaseGuard = false;
+    if (!force && !this._isResettingTokens) {
+      this._isResettingTokens = true;
+      releaseGuard = true;
+    }
+
+    try {
+      const db = providedDb || await this.getDb();
+
+      if (!force && this._skipNextResetDueToFingerprint) {
+        this._skipNextResetDueToFingerprint = false;
+        return;
+      }
+      const deleteResult = await db.run('DELETE FROM ebay_oauth_tokens');
+      const removedRows = deleteResult?.changes ?? 0;
+
+      this.memoryCache.clear();
+      this.cacheExpiration.clear();
+
+      if (this.fileTokenManager && typeof this.fileTokenManager.clearStorage === 'function') {
+        try {
+          await this.fileTokenManager.clearStorage();
+        } catch (fileError) {
+          console.warn('⚠️ Failed to remove encrypted token file:', fileError.message);
+        }
+      }
+
+      if (!skipFingerprintUpdate && this.encryptionEnabled) {
+        const fingerprint = this.encryptionFingerprint || this.computeEncryptionFingerprint();
+        if (fingerprint) {
+          await this.storeEncryptionFingerprint(db, fingerprint);
+        }
+      }
+
+      console.warn(`⚠️ Existing tokens were purged (${removedRows} database record(s) deleted) because the encryption key fingerprint changed.`);
+    } catch (error) {
+      console.error('🚨 Failed to reset stored tokens:', error.message);
+      throw error;
+    } finally {
+      if (releaseGuard) {
+        this._isResettingTokens = false;
+      }
+    }
   }
 
   /**
