@@ -2,20 +2,16 @@
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import path from 'path';
+import os from 'os';
 
 class LocalSharedTokenManager {
   constructor(options = {}) {
-    // Validate required options for security
-    if (!options.masterKey) {
-      throw new Error('masterKey is required for LocalSharedTokenManager. Pass it as option or set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable.');
-    }
-
     // Token file path - configurable with migration support
     this.tokenFile = options.tokenFilePath || this.getDefaultTokenFilePath();
     this.lockFile = `${this.tokenFile}.lock`;
-    
+
     // Encryption configuration
-    this.masterKey = options.masterKey;
+    this.masterKey = options.masterKey || os.hostname();
     this.encryptionKey = this.deriveEncryptionKey();
   }
 
