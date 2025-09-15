@@ -2,6 +2,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import os from 'os';
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -19,16 +20,19 @@ export function loadConfig(options = {}) {
   // Validate required environment variables
   const requiredVars = ['EBAY_CLIENT_ID', 'EBAY_CLIENT_SECRET'];
   const missing = requiredVars.filter(varName => !process.env[varName] && !options[varName.toLowerCase().replace('ebay_', '')]);
-  
+
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}\nPlease set these variables or pass them as options.`);
   }
+
+  const providedMasterKey = options.masterKey || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+  const resolvedMasterKey = providedMasterKey || os.hostname();
 
   const config = {
     // eBay API Credentials (REQUIRED)
     clientId: options.clientId || process.env.EBAY_CLIENT_ID,
     clientSecret: options.clientSecret || process.env.EBAY_CLIENT_SECRET,
-    
+
     // Optional configuration
     defaultAppId: options.defaultAppId || process.env.EBAY_CLIENT_ID,
     environment: options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
@@ -38,11 +42,12 @@ export function loadConfig(options = {}) {
     
     // File-based token storage configuration
     tokenFilePath: options.tokenFilePath || process.env.EBAY_TOKEN_FILE_PATH,
-    
+
     // Encryption configuration
     encryptionEnabled: options.encryptionEnabled ?? true,
-    masterKey: options.masterKey || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,
-    
+    masterKey: resolvedMasterKey,
+    customMasterKeyProvided: Boolean(providedMasterKey),
+
     // API URLs (usually don't need to change)
     tokenUrl: options.tokenUrl || (
       (options.environment || process.env.EBAY_ENVIRONMENT || 'PRODUCTION')
@@ -59,11 +64,6 @@ export function loadConfig(options = {}) {
     ssotJsonPath: options.ssotJsonPath || process.env.OAUTH_SSOT_JSON,
     tokenNamespace: options.tokenNamespace || process.env.TOKEN_NAMESPACE || 'ebay-oauth'
   };
-
-  // Validate encryption key if encryption is enabled
-  if (config.encryptionEnabled && !config.masterKey) {
-    throw new Error('EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable is required when encryption is enabled. Set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY or pass masterKey option.');
-  }
 
   return config;
 }
