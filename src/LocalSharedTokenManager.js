@@ -338,7 +338,7 @@ class LocalSharedTokenManager {
   async checkRefreshTokenValidity() {
     try {
       console.log('🔍 Checking refresh token validity (LocalSharedTokenManager)...');
-      
+
       const data = await this.readTokenFile();
       
       // Check all tokens for any valid refresh token
@@ -369,6 +369,57 @@ class LocalSharedTokenManager {
       console.error('🚨 Failed to check refresh token validity:', error.message);
       return false;
     }
+  }
+
+  async clearStorage() {
+    const filesToDelete = [
+      this.tokenFile,
+      this.lockFile,
+      `${this.tokenFile}.tmp`
+    ];
+
+    for (const filePath of filesToDelete) {
+      if (!filePath) {
+        continue;
+      }
+      try {
+        await fs.unlink(filePath);
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          console.warn(`⚠️ Failed to remove token file artifact ${filePath}: ${error.message}`);
+        }
+      }
+    }
+
+    try {
+      const directory = path.dirname(this.tokenFile);
+      const baseName = path.basename(this.tokenFile);
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+      const backupPrefix = `${baseName}.backup`;
+
+      for (const entry of entries) {
+        if (!entry.isFile()) {
+          continue;
+        }
+        if (!entry.name.startsWith(backupPrefix)) {
+          continue;
+        }
+        const backupPath = path.join(directory, entry.name);
+        try {
+          await fs.unlink(backupPath);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            console.warn(`⚠️ Failed to remove backup token file ${backupPath}: ${error.message}`);
+          }
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('⚠️ Failed to enumerate backup token files:', error.message);
+      }
+    }
+
+    console.log('🧹 Cleared encrypted JSON token storage artifacts');
   }
 }
 
