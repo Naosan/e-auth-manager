@@ -174,12 +174,27 @@ class LocalSharedTokenManager {
   async acquireLock() {
     const maxAttempts = 10;
     const retryDelay = 100;
-    
+    const staleLockTimeout = 5 * 60 * 1000; // 5 minutes
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
+        // Check for stale lock before attempting to acquire a new one
+        try {
+          const stats = await fs.stat(this.lockFile);
+          const age = Date.now() - stats.mtimeMs;
+          if (age > staleLockTimeout) {
+            console.warn(`⚠️ Removing stale lock file: ${this.lockFile}`);
+            await fs.unlink(this.lockFile);
+          }
+        } catch (statError) {
+          if (statError.code !== 'ENOENT') {
+            console.warn(`⚠️ Failed to check lock file: ${statError.message}`);
+          }
+        }
+
         const pid = process.pid.toString();
         await fs.writeFile(this.lockFile, pid, { flag: 'wx' });
-        
+
         // Return release function
         return async () => {
           try {
@@ -201,7 +216,18 @@ class LocalSharedTokenManager {
         throw error;
       }
     }
-    
+
+    try {
+      const stats = await fs.stat(this.lockFile);
+      const age = Date.now() - stats.mtimeMs;
+      const cause = age > staleLockTimeout
+        ? 'possible abnormal termination'
+        : 'another process is holding the lock';
+      console.warn(`⚠️ Failed to acquire lock ${this.lockFile} (${cause})`);
+    } catch (statError) {
+      console.warn(`⚠️ Failed to acquire lock ${this.lockFile} (reason unknown: ${statError.message})`);
+    }
+
     throw new Error('Failed to acquire lock after maximum attempts');
   }
 
