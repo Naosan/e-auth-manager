@@ -56,6 +56,8 @@ EBAY_CLIENT_SECRET=your_ebay_client_secret
 EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_256bit_encryption_key
 
 # Optional - Initial refresh token (obtained via manual OAuth flow)
+# NOTE: This only seeds the "default" account/app ID.
+#       Use the bulk seeding helper for any additional accounts.
 EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
 
 # Optional - For multi-instance coordination
@@ -65,6 +67,38 @@ TOKEN_NAMESPACE=my-app
 # Optional - Environment
 EBAY_ENVIRONMENT=PRODUCTION  # or SANDBOX
 ```
+
+### Bulk seeding refresh tokens for multiple accounts
+
+When you need to preload refresh tokens for several account/app ID pairs, use the helper script in `examples/bulk-refresh-token-seed.js`. The script reads a list of refresh tokens and calls `setRefreshToken` for each entry, ensuring every account is initialized. Tokens are persisted using the same logic as the library itself (SQLite, encrypted JSON cache, SSOT provider, etc.).
+
+1. Describe the tokens either inline or via file:
+   - **Inline JSON** (set in `.env`):
+     ```bash
+     EBAY_REFRESH_TOKEN_SEED_JSON='[
+       {"accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef"},
+       {"accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz"}
+     ]'
+     ```
+   - **JSON file** (relative to the project root or absolute path):
+     ```bash
+     EBAY_REFRESH_TOKEN_SEED_FILE=config/refresh-token-seed.json
+     ```
+     ```json
+     [
+       { "accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef" },
+       { "accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz" }
+     ]
+     ```
+
+2. Run the bulk seeding script after your environment variables are loaded:
+   ```bash
+   node examples/bulk-refresh-token-seed.js
+   ```
+
+The script reports which tokens were stored successfully and highlights any entries that need attention.
+
+> **Tip:** `EBAY_INITIAL_REFRESH_TOKEN` only seeds the default account/app ID when the manager is first instantiated. To update existing entries or register additional accounts, list them in the seed JSON (or call `setRefreshToken` manually) and run the helper script once per environment.
 
 ---
 
