@@ -66,6 +66,36 @@ TOKEN_NAMESPACE=my-app
 EBAY_ENVIRONMENT=PRODUCTION  # or SANDBOX
 ```
 
+### Bulk seeding refresh tokens for multiple accounts
+
+When you need to preload refresh tokens for several account/app ID pairs, use the helper script in `examples/bulk-refresh-token-seed.js`. The script reads a list of refresh tokens and calls `setRefreshToken` for each entry, ensuring every account is initialized.
+
+1. Describe the tokens either inline or via file:
+   - **Inline JSON** (set in `.env`):
+     ```bash
+     EBAY_REFRESH_TOKEN_SEED_JSON='[
+       {"accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef"},
+       {"accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz"}
+     ]'
+     ```
+   - **JSON file** (relative to the project root or absolute path):
+     ```bash
+     EBAY_REFRESH_TOKEN_SEED_FILE=config/refresh-token-seed.json
+     ```
+     ```json
+     [
+       { "accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef" },
+       { "accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz" }
+     ]
+     ```
+
+2. Run the bulk seeding script after your environment variables are loaded:
+   ```bash
+   node examples/bulk-refresh-token-seed.js
+   ```
+
+The script reports which tokens were stored successfully and highlights any entries that need attention.
+
 ---
 
 ## 🏗️ Architecture
