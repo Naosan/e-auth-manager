@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import crypto from 'crypto';
 import path from 'path';
+import os from 'os';
 import axios from 'axios';
 import LocalSharedTokenManager from './LocalSharedTokenManager.js';
 import FileJsonTokenProvider from './providers/FileJsonTokenProvider.js';
@@ -25,16 +26,18 @@ class UserAccessToken_AuthorizationCodeManager {
     this.clientSecret = options.clientSecret;
     this.tokenUrl = options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token';
     this.encryptionEnabled = options.encryptionEnabled ?? true;
-    
+    this.customMasterKeyProvided = options.customMasterKeyProvided ?? Boolean(options.masterKey);
+    this.masterKey = options.masterKey || os.hostname();
+
     // Default App ID for database searches (prioritized over clientId)
     this.defaultAppId = options.defaultAppId || this.clientId;
-    
+
     // Initial Refresh Token for first-time setup
     this.initialRefreshToken = options.initialRefreshToken;
-    
+
     // Database connection (lazy initialization)
     this.db = null;
-    
+
     // In-memory cache for performance
     this.memoryCache = new Map();
     this.cacheExpiration = new Map();
@@ -45,24 +48,25 @@ class UserAccessToken_AuthorizationCodeManager {
     
     // Encryption key for token storage
     if (this.encryptionEnabled) {
-      if (!options.masterKey) {
-        throw new Error('masterKey is required when encryption is enabled. Pass it as option or set EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY environment variable.');
-      }
-      this.masterKey = options.masterKey;
       this.encryptionKey = this.deriveEncryptionKey();
       this.encryptionFingerprint = this.computeEncryptionFingerprint();
+    } else {
+      this.encryptionKey = null;
+      this.encryptionFingerprint = null;
     }
-    
+
     // Always initialize LocalSharedTokenManager for dual storage (no environment variable needed)
     // This provides fast JSON access and automatic backup
     try {
-      this.fileTokenManager = options.masterKey
+      this.fileTokenManager = this.encryptionEnabled
         ? new LocalSharedTokenManager({
-          masterKey: options.masterKey,
+          masterKey: this.masterKey,
           tokenFilePath: options.tokenFilePath
         })
         : null;
-      console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
+      if (this.fileTokenManager) {
+        console.log('🔄 Dual storage enabled automatically: Database + Encrypted JSON file');
+      }
     } catch (error) {
       console.warn('⚠️ Could not initialize file token manager, using database only:', error.message);
       this.fileTokenManager = null;
@@ -70,10 +74,10 @@ class UserAccessToken_AuthorizationCodeManager {
 
     // Centralized JSON (SSOT) Provider (enabled if specified)
     this.tokenProvider = options.tokenProvider || (
-      options.ssotJsonPath && options.masterKey
+      options.ssotJsonPath && this.customMasterKeyProvided
         ? new FileJsonTokenProvider({
           filePath: options.ssotJsonPath,
-          masterKey: options.masterKey,
+          masterKey: this.masterKey,
           namespace: options.tokenNamespace || 'ebay-oauth'
         })
         : null
