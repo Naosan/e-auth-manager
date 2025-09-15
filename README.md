@@ -45,60 +45,29 @@ const browseToken = await getBrowseApiToken();
 
 ### Environment Setup
 
-Create a `.env` file:
+1. Copy `.env.example` to `.env` and fill in your credentials.
+2. Start with the minimal variables below, then opt into advanced options as your deployment requires.
+
+| Type | Keys | Notes |
+| --- | --- | --- |
+| **Required** | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | Needed for every token request. |
+| **Security (recommended)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Ensures encrypted local storage can be decrypted across restarts/hosts. |
+| **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for `EBAY_DEFAULT_APP_ID` the first time the manager runs. |
+| **Coordination** | `OAUTH_SSOT_JSON`, `TOKEN_NAMESPACE` | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
+| **Environment** | `EBAY_ENVIRONMENT` | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 
 ```bash
-# Required
+# Minimal example
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
-
-# Security (Recommended)
-EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_256bit_encryption_key
-
-# Optional - Initial refresh token (obtained via manual OAuth flow)
-# NOTE: This only seeds the "default" account/app ID.
-#       Use the bulk seeding helper for any additional accounts.
-EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
-
-# Optional - For multi-instance coordination
-OAUTH_SSOT_JSON=/secure/path/ebay-refresh-tokens.json
-TOKEN_NAMESPACE=my-app
-
-# Optional - Environment
-EBAY_ENVIRONMENT=PRODUCTION  # or SANDBOX
+EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
-### Bulk seeding refresh tokens for multiple accounts
+> **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
 
-When you need to preload refresh tokens for several account/app ID pairs, use the helper script in `examples/bulk-refresh-token-seed.js`. The script reads a list of refresh tokens and calls `setRefreshToken` for each entry, ensuring every account is initialized. Tokens are persisted using the same logic as the library itself (SQLite, encrypted JSON cache, SSOT provider, etc.).
+### Bulk seeding refresh tokens
 
-1. Describe the tokens either inline or via file:
-   - **Inline JSON** (set in `.env`):
-     ```bash
-     EBAY_REFRESH_TOKEN_SEED_JSON='[
-       {"accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef"},
-       {"accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz"}
-     ]'
-     ```
-   - **JSON file** (relative to the project root or absolute path):
-     ```bash
-     EBAY_REFRESH_TOKEN_SEED_FILE=config/refresh-token-seed.json
-     ```
-     ```json
-     [
-       { "accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef" },
-       { "accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz" }
-     ]
-     ```
-
-2. Run the bulk seeding script after your environment variables are loaded:
-   ```bash
-   node examples/bulk-refresh-token-seed.js
-   ```
-
-The script reports which tokens were stored successfully and highlights any entries that need attention.
-
-> **Tip:** `EBAY_INITIAL_REFRESH_TOKEN` only seeds the default account/app ID when the manager is first instantiated. To update existing entries or register additional accounts, list them in the seed JSON (or call `setRefreshToken` manually) and run the helper script once per environment.
+Detailed instructions for the `examples/bulk-refresh-token-seed.js` helper now live in [`docs/bulk-refresh-token-seeding.md`](docs/bulk-refresh-token-seeding.md) to minimize README merge conflicts. The guide covers preparing JSON seed data, running the script, and interpreting the results.
 
 ---
 
