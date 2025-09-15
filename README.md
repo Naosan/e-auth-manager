@@ -51,16 +51,25 @@ const browseToken = await getBrowseApiToken();
 | Type | Keys | Notes |
 | --- | --- | --- |
 | **Required** | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | Needed for every token request. |
-| **Security (recommended)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Ensures encrypted local storage can be decrypted across restarts/hosts. |
+| **Security (optional)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
 | **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for `EBAY_DEFAULT_APP_ID` the first time the manager runs. |
 | **Coordination** | `OAUTH_SSOT_JSON`, `TOKEN_NAMESPACE` | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EBAY_ENVIRONMENT` | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
+
+If you don't provide a master key, the library automatically falls back to the current
+machine's hostname. Tokens encrypted with the default key can be decrypted across
+restarts on that same host, but they cannot be shared across different machines without
+specifying a custom key. This also applies to SSOT coordination—set
+`EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` whenever `OAUTH_SSOT_JSON` is used so every
+instance can decrypt the shared file.
 
 ```bash
 # Minimal example
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
-EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
+
+# Optional: override the per-machine default encryption key
+# EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
 > **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
@@ -271,8 +280,12 @@ All tokens are encrypted using industry-standard AES-256-GCM with:
 
 ### Secure Key Management
 
+By default the library derives its encryption key from the current machine's hostname so tokens remain decryptable across
+restarts on that host. Provide your own master key when you need a stable key that works across multiple machines or when you
+plan to rotate keys explicitly.
+
 ```javascript
-// Environment variable (recommended)
+// Environment variable (optional, recommended for multi-host setups)
 EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_256_bit_secure_key
 
 // Or via configuration
