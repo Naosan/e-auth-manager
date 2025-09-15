@@ -19,12 +19,35 @@ class LocalSharedTokenManager {
     this.encryptionKey = this.deriveEncryptionKey();
   }
 
+  async executeWithLock(fn, operationName = 'operation') {
+    const maxRetries = 3;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const release = await this.acquireLock();
+        try {
+          return await fn();
+        } finally {
+          await release();
+        }
+      } catch (error) {
+        // Retry only when lock acquisition fails
+        if (error.message && error.message.includes('Failed to acquire lock')) {
+          if (attempt === maxRetries - 1) {
+            throw new Error(`Failed to acquire lock for ${operationName} after ${maxRetries} retries`);
+          }
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
   async getToken(appId) {
-    const release = await this.acquireLock();
-    try {
+    return this.executeWithLock(async () => {
       const data = await this.readTokenFile();
       const token = data.tokens[appId];
-      
+
       if (!token) {
         console.error(`🚨 Token not found for app: ${appId}`);
         return null;
@@ -36,23 +59,18 @@ class LocalSharedTokenManager {
       }
 
       return token;
-    } finally {
-      await release();
-    }
+    }, 'getToken');
   }
 
   async saveToken(appId, tokenData) {
-    const release = await this.acquireLock();
-    try {
+    return this.executeWithLock(async () => {
       const current = await this.readTokenFile();
       current.tokens[appId] = {
         ...tokenData,
         lastUpdated: new Date().toISOString()
       };
       await this.saveTokenFile(current);
-    } finally {
-      await release();
-    }
+    }, 'saveToken');
   }
 
   async readTokenFile() {
