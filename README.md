@@ -45,26 +45,29 @@ const browseToken = await getBrowseApiToken();
 
 ### Environment Setup
 
-Create a `.env` file:
+1. Copy `.env.example` to `.env` and fill in your credentials.
+2. Start with the minimal variables below, then opt into advanced options as your deployment requires.
+
+| Type | Keys | Notes |
+| --- | --- | --- |
+| **Required** | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | Needed for every token request. |
+| **Security (recommended)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Ensures encrypted local storage can be decrypted across restarts/hosts. |
+| **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for `EBAY_DEFAULT_APP_ID` the first time the manager runs. |
+| **Coordination** | `OAUTH_SSOT_JSON`, `TOKEN_NAMESPACE` | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
+| **Environment** | `EBAY_ENVIRONMENT` | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 
 ```bash
-# Required
+# Minimal example
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
-
-# Security (Recommended)
-EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_secure_256bit_encryption_key
-
-# Optional - Initial refresh token (obtained via manual OAuth flow)
-EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
-
-# Optional - For multi-instance coordination
-OAUTH_SSOT_JSON=/secure/path/ebay-refresh-tokens.json
-TOKEN_NAMESPACE=my-app
-
-# Optional - Environment
-EBAY_ENVIRONMENT=PRODUCTION  # or SANDBOX
+EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
+
+> **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
+
+### Bulk seeding refresh tokens
+
+Detailed instructions for the `examples/bulk-refresh-token-seed.js` helper now live in [`docs/bulk-refresh-token-seeding.md`](docs/bulk-refresh-token-seeding.md) to minimize README merge conflicts. The guide covers preparing JSON seed data, running the script, and interpreting the results.
 
 ### Bulk seeding refresh tokens for multiple accounts
 
