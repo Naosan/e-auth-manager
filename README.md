@@ -281,6 +281,20 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
 });
 ```
 
+### Encryption Key Fingerprint & Automatic Reset
+
+- The manager stores a SHA-256 fingerprint of the derived encryption key inside the SQLite database (`oauth_metadata` table).
+- On startup the fingerprint is compared to the current key. If they differ, the library automatically:
+  - Deletes every row in `ebay_oauth_tokens`.
+  - Removes the encrypted JSON cache (including `.lock`/backup files).
+  - Logs a warning explaining that tokens were purged because the key changed.
+- After rotating `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`, re-seed refresh tokens (e.g., via `EBAY_INITIAL_REFRESH_TOKEN` or the bulk seeding helper).
+- For manual recovery or during incident response you can trigger the reset yourself:
+
+```bash
+node examples/reset-encryption.js
+```
+
 ### File Permissions
 
 Automatically sets restrictive permissions on token files:
