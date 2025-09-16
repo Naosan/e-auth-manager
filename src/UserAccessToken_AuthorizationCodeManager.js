@@ -153,7 +153,7 @@ class UserAccessToken_AuthorizationCodeManager {
         console.error(error.stack);
       }
       console.info('🛠️ Recommended actions:');
-      console.info('   • Ensure required environment variables (e.g., EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_REFRESH_TOKEN) are set.');
+      console.info('   • Ensure required environment variables (e.g., EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_INITIAL_REFRESH_TOKEN) are set.');
       console.info('   • Verify that EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY matches the key used to encrypt existing tokens.');
       console.info('   • Confirm the database path is writable and the master key is correct.');
       console.warn('⚠️ Database has NOT been initialized. Refresh token was not stored.');

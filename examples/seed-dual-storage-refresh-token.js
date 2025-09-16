@@ -63,10 +63,7 @@ function parseArgs(argv) {
   }
 
   if (!result.refreshToken) {
-    result.refreshToken =
-      process.env.EBAY_REFRESH_TOKEN ||
-      process.env.EBAY_NEW_REFRESH_TOKEN ||
-      process.env.EBAY_INITIAL_REFRESH_TOKEN;
+    result.refreshToken = process.env.EBAY_INITIAL_REFRESH_TOKEN;
   }
 
   // Normalize / defaults
@@ -91,7 +88,7 @@ async function seedDualStorage() {
 
   if (!refreshToken) {
     console.error('\n❌ Missing refresh token.');
-    console.error('   Pass it as the first argument or via --refresh-token, EBAY_REFRESH_TOKEN, EBAY_NEW_REFRESH_TOKEN, or EBAY_INITIAL_REFRESH_TOKEN.');
+    console.error('   Pass it as the first argument, via --refresh-token, or set EBAY_INITIAL_REFRESH_TOKEN.');
     process.exit(1);
   }
 
