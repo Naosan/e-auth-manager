@@ -222,6 +222,35 @@ When you receive a new refresh token (for example, after rotating credentials), 
 
 The script increments the SSOT version when it writes the encrypted refresh token so that other instances immediately recognize the update.
 
+#### 🪄 Dual storage refresh token seeder
+
+Need to initialize both the SQLite database and the encrypted JSON cache (dual storage) with a refresh token? Use the companion seeding script to populate both locations in one command.
+
+1. Provide your credentials and optional storage overrides via environment variables:
+   ```env
+   EBAY_CLIENT_ID=your_production_client_id
+   EBAY_CLIENT_SECRET=your_production_client_secret
+   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
+   # Optional: override storage destinations (defaults match the library)
+   # EBAY_DATABASE_PATH=./database/ebay_tokens.sqlite
+   # EBAY_TOKEN_FILE_PATH=./config/ebay-tokens.encrypted.json
+   ```
+2. Run the seeder with the refresh token you received from eBay:
+   ```bash
+   node examples/seed-dual-storage-refresh-token.js "v=1.abcdefg"
+   ```
+   Or pass explicit flags when you have multiple accounts or non-default paths:
+   ```bash
+   node examples/seed-dual-storage-refresh-token.js \
+     --refresh-token "v=1.abcdefg" \
+     --account tokyo-1uppers \
+     --app-id YourAppID \
+     --database ./database/ebay_tokens.sqlite \
+     --tokens ./config/ebay-tokens.encrypted.json
+   ```
+
+The script encrypts the refresh token with AES-256-CBC, writes it to `ebay_tokens.sqlite`, and mirrors the payload in the machine-shared encrypted JSON file. This matches the default behaviour of `UserAccessToken_AuthorizationCodeManager`, making it easy to bootstrap new environments or recover from accidental file deletions.
+
 ---
 
 ## 💾 Token Storage Details
