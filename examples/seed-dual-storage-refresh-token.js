@@ -32,7 +32,7 @@ function parseArgs(argv) {
     if (!arg.startsWith('--') && !result.refreshToken) {
       result.refreshToken = arg;
       continue;
-    }
+        }
 
     if (arg.startsWith('--refresh-token=')) {
       result.refreshToken = arg.split('=')[1];
@@ -63,11 +63,13 @@ function parseArgs(argv) {
   }
 
   if (!result.refreshToken) {
-    result.refreshToken = process.env.EBAY_REFRESH_TOKEN
-      || process.env.EBAY_NEW_REFRESH_TOKEN
-      || process.env.EBAY_INITIAL_REFRESH_TOKEN;
+    result.refreshToken =
+      process.env.EBAY_REFRESH_TOKEN ||
+      process.env.EBAY_NEW_REFRESH_TOKEN ||
+      process.env.EBAY_INITIAL_REFRESH_TOKEN;
   }
 
+  // Normalize / defaults
   if (!result.databasePath) {
     result.databasePath = resolveDefaultDatabasePath();
   } else {
@@ -122,13 +124,21 @@ async function seedDualStorage() {
 
     console.log(`\n👤 Account Name: ${accountName}`);
     console.log(`🆔 App ID: ${effectiveAppId}`);
-    console.log(`🗄️ Database Path: ${databasePath}`);
-    console.log(`📁 Token File Path: ${tokenFilePath}`);
+
+    const resolvedDbPath = manager?.dbPath || databasePath;
+    const resolvedTokenFile = manager?.fileTokenManager?.tokenFile || tokenFilePath;
+
+    console.log(`🗄️ Database Path: ${resolvedDbPath}`);
+    if (manager?.fileTokenManager) {
+      console.log(`📁 Token File Path: ${resolvedTokenFile}`);
+    } else {
+      console.log(`📁 Token File Path: ${resolvedTokenFile} (file cache disabled or not configured)`);
+    }
 
     await manager.saveUserAccessToken(accountName, tokenPayload);
     console.log('\n✅ Database and encrypted JSON cache seeded successfully.');
 
-    if (manager.fileTokenManager) {
+    if (manager?.fileTokenManager) {
       const cached = await manager.fileTokenManager.getToken(effectiveAppId);
       console.log('\n📄 Encrypted cache snapshot:');
       console.log('- Last updated:', cached?.lastUpdated || 'n/a');
@@ -160,4 +170,3 @@ async function seedDualStorage() {
 seedDualStorage().catch(() => {
   process.exitCode = 1;
 });
-

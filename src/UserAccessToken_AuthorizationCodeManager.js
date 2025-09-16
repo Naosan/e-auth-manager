@@ -540,61 +540,47 @@ class UserAccessToken_AuthorizationCodeManager {
       const encryptedRefreshToken = this.encryptToken(tokenData.refreshToken);
       
       const now = new Date().toISOString();
-      
-      const existingToken = await db.get(`
-        SELECT id FROM ebay_oauth_tokens WHERE account_name = ?
-      `, [accountName]);
+      const appId = tokenData.appId || this.defaultAppId;
+      const accessTokenUpdatedDate = tokenData.accessTokenUpdatedDate || now;
+      const refreshTokenUpdatedDate = tokenData.refreshTokenUpdatedDate || now;
+      const refreshTokenExpiresIn = tokenData.refreshTokenExpiresIn || 47304000; // Default 1.5 years
+      const tokenType = tokenData.tokenType || 'Bearer';
 
-      if (existingToken) {
-        // Update existing record
-        await db.run(`
-          UPDATE ebay_oauth_tokens 
-          SET access_token = ?, 
-              refresh_token = ?, 
-              access_token_updated_date = ?, 
-              expires_in = ?,
-              refresh_token_updated_date = ?,
-              refresh_token_expires_in = ?,
-              token_type = ?,
-              app_id = ?,
-              updated_at = ?
-          WHERE account_name = ?
-        `, [
-          encryptedAccessToken,
-          encryptedRefreshToken,
-          tokenData.accessTokenUpdatedDate || now,
-          tokenData.expiresIn,
-          tokenData.refreshTokenUpdatedDate || now,
-          tokenData.refreshTokenExpiresIn || 47304000,
-          tokenData.tokenType || 'Bearer',
-          tokenData.appId || this.defaultAppId,
-          now,
-          accountName
-        ]);
-        console.log(`✅ Updated token for account: ${accountName}`);
+      const result = await db.run(`
+        INSERT INTO ebay_oauth_tokens
+        (name, account_name, app_id, access_token, refresh_token,
+         access_token_updated_date, expires_in, refresh_token_updated_date,
+         refresh_token_expires_in, token_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(account_name) DO UPDATE SET
+          app_id = excluded.app_id,
+          access_token = excluded.access_token,
+          refresh_token = excluded.refresh_token,
+          access_token_updated_date = excluded.access_token_updated_date,
+          expires_in = excluded.expires_in,
+          refresh_token_updated_date = excluded.refresh_token_updated_date,
+          refresh_token_expires_in = excluded.refresh_token_expires_in,
+          token_type = excluded.token_type,
+          updated_at = excluded.updated_at
+      `, [
+        'oauth',
+        accountName,
+        appId,
+        encryptedAccessToken,
+        encryptedRefreshToken,
+        accessTokenUpdatedDate,
+        tokenData.expiresIn,
+        refreshTokenUpdatedDate,
+        refreshTokenExpiresIn,
+        tokenType,
+        now,
+        now
+      ]);
+
+      if (result?.changes > 0) {
+        console.log(`✅ Stored token for account: ${accountName} (App ID: ${appId})`);
       } else {
-        // Insert new record
-        await db.run(`
-          INSERT INTO ebay_oauth_tokens 
-          (name, account_name, app_id, access_token, refresh_token, 
-           access_token_updated_date, expires_in, refresh_token_updated_date, 
-           refresh_token_expires_in, token_type, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          'oauth',
-          accountName,
-          tokenData.appId || this.defaultAppId,
-          encryptedAccessToken,
-          encryptedRefreshToken,
-          tokenData.accessTokenUpdatedDate || now,
-          tokenData.expiresIn,
-          tokenData.refreshTokenUpdatedDate || now,
-          tokenData.refreshTokenExpiresIn || 47304000, // Default 1.5 years
-          tokenData.tokenType || 'Bearer',
-          now,
-          now
-        ]);
-        console.log(`✅ Created new token record for account: ${accountName}`);
+        console.log(`ℹ️ Token record unchanged for account: ${accountName}`);
       }
 
       // Clear memory cache to force refresh
