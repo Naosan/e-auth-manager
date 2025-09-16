@@ -48,7 +48,8 @@
     "lint": "eslint src/",
     "example:database": "node examples/database-example.js",
     "example:file": "node examples/file-example.js",
-    "example:dual-storage": "node examples/dual-storage-example.js"
+    "example:dual-storage": "node examples/dual-storage-example.js",
+    "example:generate-default-file": "node examples/generate-default-token-file.js"
   },
   "files": [
     "src/",
