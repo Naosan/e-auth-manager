@@ -10,7 +10,7 @@ class LocalSharedTokenManager {
     this.tokenFile = options.tokenFilePath || this.getDefaultTokenFilePath();
     this.lockFile = `${this.tokenFile}.lock`;
 
-    // Encryption configuration
+    // Encryption configuration (fall back to per-machine default)
     this.masterKey = options.masterKey || os.hostname();
     this.encryptionKey = this.deriveEncryptionKey();
   }

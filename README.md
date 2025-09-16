@@ -68,7 +68,7 @@ instance can decrypt the shared file.
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
-# Optional: override the per-machine default encryption key
+# Optional: override the per-machine default encryption key (hostname fallback is automatic)
 # EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
@@ -286,10 +286,12 @@ plan to rotate keys explicitly.
 
 ```javascript
 // Environment variable (optional, recommended for multi-host setups)
+// Optional override; defaults to hostname-derived key when omitted
 EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_256_bit_secure_key
 
 // Or via configuration
 const manager = new UserAccessToken_AuthorizationCodeManager({
+  // Optional override; leave unset to use the per-machine default key
   masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
 });
 ```
@@ -499,7 +501,7 @@ chmod 600 ./tokens/ebay_tokens.json
 ```javascript
 // Ensure all instances use same masterKey and ssotJsonPath
 const config = {
-  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,  // Same across instances
+  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,  // Optional override shared across instances
   ssotJsonPath: '/shared/tokens.json'      // Shared location
 };
 ```
