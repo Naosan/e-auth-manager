@@ -1,7 +1,19 @@
 // Dual Storage Refresh Token Seeder - Populates SQLite + encrypted JSON cache
 import path from 'path';
+import { fileURLToPath } from 'url';
 import UserAccessToken_AuthorizationCodeManager from '../src/UserAccessToken_AuthorizationCodeManager.js';
 import { loadConfig } from '../src/config.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function resolveDefaultDatabasePath() {
+  return path.resolve(__dirname, '../database/ebay_tokens.sqlite');
+}
+
+function resolveDefaultTokenFilePath() {
+  return path.resolve(__dirname, '../config/ebay-tokens.encrypted.json');
+}
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -9,8 +21,8 @@ function parseArgs(argv) {
     refreshToken: null,
     accountName: process.env.EBAY_ACCOUNT_NAME || 'default',
     appId: process.env.EBAY_APP_ID || process.env.EBAY_CLIENT_ID || null,
-    databasePath: process.env.EBAY_DATABASE_PATH || undefined,
-    tokenFilePath: process.env.EBAY_TOKEN_FILE_PATH || undefined,
+    databasePath: process.env.EBAY_DATABASE_PATH || null,
+    tokenFilePath: process.env.EBAY_TOKEN_FILE_PATH || null,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -20,7 +32,7 @@ function parseArgs(argv) {
     if (!arg.startsWith('--') && !result.refreshToken) {
       result.refreshToken = arg;
       continue;
-    }
+        }
 
     if (arg.startsWith('--refresh-token=')) {
       result.refreshToken = arg.split('=')[1];
@@ -51,16 +63,22 @@ function parseArgs(argv) {
   }
 
   if (!result.refreshToken) {
-    result.refreshToken = process.env.EBAY_REFRESH_TOKEN
-      || process.env.EBAY_NEW_REFRESH_TOKEN
-      || process.env.EBAY_INITIAL_REFRESH_TOKEN;
+    result.refreshToken =
+      process.env.EBAY_REFRESH_TOKEN ||
+      process.env.EBAY_NEW_REFRESH_TOKEN ||
+      process.env.EBAY_INITIAL_REFRESH_TOKEN;
   }
 
-  if (result.databasePath) {
+  // Normalize / defaults
+  if (!result.databasePath) {
+    result.databasePath = resolveDefaultDatabasePath();
+  } else {
     result.databasePath = path.resolve(result.databasePath);
   }
 
-  if (result.tokenFilePath) {
+  if (!result.tokenFilePath) {
+    result.tokenFilePath = resolveDefaultTokenFilePath();
+  } else {
     result.tokenFilePath = path.resolve(result.tokenFilePath);
   }
 
@@ -79,15 +97,7 @@ async function seedDualStorage() {
 
   let manager;
   try {
-    const overrides = {};
-    if (databasePath) {
-      overrides.databasePath = databasePath;
-    }
-    if (tokenFilePath) {
-      overrides.tokenFilePath = tokenFilePath;
-    }
-
-    const config = loadConfig(overrides);
+    const config = loadConfig({ databasePath, tokenFilePath });
     const effectiveAppId = appId || config.defaultAppId;
 
     if (!effectiveAppId) {
@@ -96,7 +106,8 @@ async function seedDualStorage() {
 
     manager = new UserAccessToken_AuthorizationCodeManager({
       ...config,
-      ...overrides,
+      databasePath,
+      tokenFilePath,
     });
 
     const now = new Date().toISOString();
@@ -113,17 +124,21 @@ async function seedDualStorage() {
 
     console.log(`\n👤 Account Name: ${accountName}`);
     console.log(`🆔 App ID: ${effectiveAppId}`);
-    console.log(`🗄️ Database Path: ${manager.dbPath}`);
-    if (manager.fileTokenManager) {
-      console.log(`📁 Token File Path: ${manager.fileTokenManager.tokenFile}`);
+
+    const resolvedDbPath = manager?.dbPath || databasePath;
+    const resolvedTokenFile = manager?.fileTokenManager?.tokenFile || tokenFilePath;
+
+    console.log(`🗄️ Database Path: ${resolvedDbPath}`);
+    if (manager?.fileTokenManager) {
+      console.log(`📁 Token File Path: ${resolvedTokenFile}`);
     } else {
-      console.log('📁 Token File Path: not configured (file cache disabled)');
+      console.log(`📁 Token File Path: ${resolvedTokenFile} (file cache disabled or not configured)`);
     }
 
     await manager.saveUserAccessToken(accountName, tokenPayload);
     console.log('\n✅ Database and encrypted JSON cache seeded successfully.');
 
-    if (manager.fileTokenManager) {
+    if (manager?.fileTokenManager) {
       const cached = await manager.fileTokenManager.getToken(effectiveAppId);
       console.log('\n📄 Encrypted cache snapshot:');
       console.log('- Last updated:', cached?.lastUpdated || 'n/a');
@@ -155,4 +170,3 @@ async function seedDualStorage() {
 seedDualStorage().catch(() => {
   process.exitCode = 1;
 });
-
