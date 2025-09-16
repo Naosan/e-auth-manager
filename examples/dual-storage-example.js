@@ -1,7 +1,7 @@
 // Dual Storage Example - Demonstrates automatic Database + Encrypted JSON persistence
 import fs from 'fs/promises';
 import path from 'path';
-import { UserAccessToken_AuthorizationCodeManager } from '../src/index.js';
+import UserAccessToken_AuthorizationCodeManager from '../src/UserAccessToken_AuthorizationCodeManager.js';
 import { loadConfig } from '../src/config.js';
 
 async function dualStorageExample() {
