@@ -47,7 +47,8 @@
     "test:windows": "set NODE_OPTIONS=--experimental-vm-modules&& jest",
     "lint": "eslint src/",
     "example:database": "node examples/database-example.js",
-    "example:file": "node examples/file-example.js"
+    "example:file": "node examples/file-example.js",
+    "example:dual-storage": "node examples/dual-storage-example.js"
   },
   "files": [
     "src/",
