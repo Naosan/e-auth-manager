@@ -1,11 +1,11 @@
 {
-  "version": 22,
-  "updatedAt": "2025-09-16T04:22:04.137Z",
+  "version": 30,
+  "updatedAt": "2025-09-16T09:21:48.179Z",
   "apps": {
     "Recordvi-4d5c-4127-862d-6e54dac92986": {
-      "refreshTokenEnc": "gcm:MnEzD+0N8L4PZ4+b:MmD5lpmCxUeK++LhBgqDJQ==:wghTCBaQ+FOWxEsPQ4Y72hlNzcNdX+J5UNP8G9mbsTme8eqMeRHf8KsOVj8c2S39SMfBlAzsRQRkYrSjuEREMMgSXe1EKcF4DOjlH876avqoI9DUvDirJdAIPdgWN5Qw",
-      "version": 1,
-      "updatedAt": "2025-09-16T04:22:04.137Z"
+      "refreshTokenEnc": "gcm:MjBP/RBRPHvtXQnB:i/stRqKeE0IW5TkaJ9IlBA==:8L4NQrCaqkBAAUr+kAHzDLM6ZTZgJ+Zt95EB93/1EPoAKyTS3om398VpZu11Fa5IfAheH1vIJupdB+nvGwx15AeYSO7z+55zsSDk5gToH0hT48WjjgB2/L5GcLhvq+y+",
+      "version": 2,
+      "updatedAt": "2025-09-16T09:21:48.179Z"
     }
   }
 }
