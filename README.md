@@ -187,12 +187,40 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_client_id',
   clientSecret: 'your_client_secret',
   masterKey: 'your_encryption_key',
-  
+
   // SSOT Configuration
   ssotJsonPath: '/secure/path/tokens.json',
   tokenNamespace: 'my-app'
 });
 ```
+
+#### ⚡️ Quick SSOT refresh token updater
+
+When you receive a new refresh token (for example, after rotating credentials), run the helper script below to push the value to the SQLite database, the encrypted JSON cache, and the SSOT file in one step.
+
+1. Confirm your `.env` contains the core production credentials:
+   ```env
+   EBAY_CLIENT_ID=your_production_client_id
+   EBAY_CLIENT_SECRET=your_production_client_secret
+   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
+   EBAY_ACCOUNT_NAME=tokyo-1uppers
+   # Optional: override the SSOT location (defaults to config/refresh-ssot.json)
+   # OAUTH_SSOT_JSON=/secure/shared/refresh-ssot.json
+   ```
+2. Execute the updater with the fresh refresh token:
+   ```bash
+   node examples/update-ssot-refresh-token.js "v=1.abcdefg"
+   ```
+   You can also pass flags for custom setups:
+   ```bash
+   node examples/update-ssot-refresh-token.js \
+     --refresh-token "v=1.abcdefg" \
+     --account tokyo-1uppers \
+     --app-id YourAppID \
+     --ssot /secure/shared/refresh-ssot.json
+   ```
+
+The script increments the SSOT version when it writes the encrypted refresh token so that other instances immediately recognize the update.
 
 ---
 
