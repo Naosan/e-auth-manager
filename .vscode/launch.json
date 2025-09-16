@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Update SSOT Refresh Token",
+      "program": "${workspaceFolder}/examples/update-ssot-refresh-token.js",
+      "envFile": "${workspaceFolder}/.env",
+      "args": [
+        "${input:refreshToken}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "refreshToken",
+      "type": "promptString",
+      "description": "Refresh token value (leave empty to use EBAY_REFRESH_TOKEN / EBAY_NEW_REFRESH_TOKEN)",
+      "default": ""
+    }
+  ]
+}

@@ -13,6 +13,7 @@ database/
 .claude/
 .serena/
 data/
+db/
 cipher-sessions.*
 CLAUDE.md
 code.md
