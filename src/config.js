@@ -26,7 +26,6 @@ export function loadConfig(options = {}) {
   }
 
   const providedMasterKey = options.masterKey || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
-  const resolvedMasterKey = providedMasterKey || os.hostname();
 
   const config = {
     // eBay API Credentials (REQUIRED)
@@ -45,7 +44,7 @@ export function loadConfig(options = {}) {
 
     // Encryption configuration
     encryptionEnabled: options.encryptionEnabled ?? true,
-    masterKey: resolvedMasterKey,
+    masterKey: options.masterKey || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY || os.hostname(),
     customMasterKeyProvided: Boolean(providedMasterKey),
 
     // API URLs (usually don't need to change)
