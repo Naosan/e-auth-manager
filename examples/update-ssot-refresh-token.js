@@ -53,7 +53,9 @@ function parseArgs(argv) {
   }
 
   if (!result.refreshToken) {
-    result.refreshToken = process.env.EBAY_REFRESH_TOKEN || process.env.EBAY_NEW_REFRESH_TOKEN;
+    result.refreshToken = process.env.EBAY_REFRESH_TOKEN
+      || process.env.EBAY_NEW_REFRESH_TOKEN
+      || process.env.EBAY_INITIAL_REFRESH_TOKEN;
   }
 
   if (!result.ssotPath) {
@@ -71,10 +73,11 @@ async function updateSsot() {
 
   if (!refreshToken) {
     console.error('\n❌ Missing refresh token.');
-    console.error('   Pass it as the first argument or via --refresh-token, EBAY_REFRESH_TOKEN, or EBAY_NEW_REFRESH_TOKEN.');
+    console.error('   Pass it as the first argument or via --refresh-token, EBAY_REFRESH_TOKEN, EBAY_NEW_REFRESH_TOKEN, or EBAY_INITIAL_REFRESH_TOKEN.');
     process.exit(1);
   }
 
+  let manager;
   try {
     const config = loadConfig({ ssotJsonPath: ssotPath });
     const effectiveAppId = appId || config.defaultAppId;
@@ -83,7 +86,7 @@ async function updateSsot() {
       throw new Error('Unable to determine App ID. Set EBAY_CLIENT_ID or pass --app-id.');
     }
 
-    const manager = new UserAccessToken_AuthorizationCodeManager({
+    manager = new UserAccessToken_AuthorizationCodeManager({
       ...config,
       ssotJsonPath: ssotPath,
     });
@@ -121,8 +124,15 @@ async function updateSsot() {
     console.log('\n🎉 Refresh token update completed successfully.');
   } catch (error) {
     console.error('\n🚨 Failed to update refresh token:', error.message);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    if (manager?.db?.close) {
+      await manager.db.close();
+      manager.db = null;
+    }
   }
 }
 
-updateSsot();
+updateSsot().catch(() => {
+  process.exitCode = 1;
+});
