@@ -3,7 +3,7 @@
 **A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with enterprise-grade features**
 
 [![npm version](https://badge.fury.io/js/@naosan/ebay-oauth-token-manager.svg)](https://www.npmjs.com/package/@naosan/ebay-oauth-token-manager)
-[![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -17,7 +17,7 @@ This library provides robust OAuth 2.0 token management for eBay APIs with sophi
 - **Zero Configuration**: Works out-of-the-box with automatic dual storage
 - **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
 - **Production Ready**: Battle-tested multi-layer caching and error recovery
-- **Enterprise Security**: AES-256-GCM encryption with machine-specific keys
+- **Enterprise Security**: AES-256 encryption with machine-specific keys (GCM for DB/SSOT, CBC for local file)
 - **Multi-Instance Coordination**: SSOT (Single Source of Truth) prevents token conflicts
 - **API-Specific Optimization**: Dedicated managers for Trading API vs Browse API
 
@@ -43,6 +43,22 @@ const tradingToken = await getTradingApiToken('your-app-id');
 const browseToken = await getBrowseApiToken();
 ```
 
+### Choosing the Right Token
+
+Use the appropriate token type based on the API family and whether user consent is required:
+
+- Application Access Token (Client Credentials)
+  - When: Public data, no user context
+  - APIs: Browse, Taxonomy (and most other Buy* read-only APIs)
+  - How: `getBrowseApiToken()`, `getTaxonomyApiToken()`
+  - Requirements: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (no refresh token needed)
+
+- User Access Token (IAF; Authorization Code)
+  - When: User account–scoped operations that require consent
+  - APIs: Trading, Sell Metadata (e.g., item condition policies by category)
+  - How: `getTradingApiToken()`, `getSellMetadataApiToken()`
+  - Requirements: Initial refresh token (via manual OAuth). Seed with `EBAY_INITIAL_REFRESH_TOKEN` or call `setRefreshToken()`
+
 ### Environment Setup
 
 1. Copy `.env.example` to `.env` and fill in your credentials.
@@ -52,7 +68,7 @@ const browseToken = await getBrowseApiToken();
 | --- | --- | --- |
 | **Required** | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | Needed for every token request. |
 | **Security (optional)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
-| **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for `EBAY_DEFAULT_APP_ID` the first time the manager runs. |
+| **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EBAY_CLIENT_ID`) the first time the manager runs. |
 | **Coordination** | `OAUTH_SSOT_JSON`, `TOKEN_NAMESPACE` | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EBAY_ENVIRONMENT` | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 
@@ -78,35 +94,7 @@ EBAY_CLIENT_SECRET=your_ebay_client_secret
 
 Detailed instructions for the `examples/bulk-refresh-token-seed.js` helper now live in [`docs/bulk-refresh-token-seeding.md`](docs/bulk-refresh-token-seeding.md) to minimize README merge conflicts. The guide covers preparing JSON seed data, running the script, and interpreting the results.
 
-### Bulk seeding refresh tokens for multiple accounts
-
-When you need to preload refresh tokens for several account/app ID pairs, use the helper script in `examples/bulk-refresh-token-seed.js`. The script reads a list of refresh tokens and calls `setRefreshToken` for each entry, ensuring every account is initialized.
-
-1. Describe the tokens either inline or via file:
-   - **Inline JSON** (set in `.env`):
-     ```bash
-     EBAY_REFRESH_TOKEN_SEED_JSON='[
-       {"accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef"},
-       {"accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz"}
-     ]'
-     ```
-   - **JSON file** (relative to the project root or absolute path):
-     ```bash
-     EBAY_REFRESH_TOKEN_SEED_FILE=config/refresh-token-seed.json
-     ```
-     ```json
-     [
-       { "accountName": "sellerA", "appId": "YourAppIDA", "refreshToken": "v=1.abcdef" },
-       { "accountName": "sellerB", "appId": "YourAppIDB", "refreshToken": "v=1.uvwxyz" }
-     ]
-     ```
-
-2. Run the bulk seeding script after your environment variables are loaded:
-   ```bash
-   node examples/bulk-refresh-token-seed.js
-   ```
-
-The script reports which tokens were stored successfully and highlights any entries that need attention.
+<!-- Old, duplicated seeding details removed. See the dedicated doc instead. -->
 
 ---
 
@@ -177,6 +165,19 @@ const manager = new ApplicationAccessToken_ClientCredentialsManager({
 // Get application token (auto-refresh if expired)
 const token = await manager.getApplicationAccessToken();
 ```
+
+### Sell Metadata (User Access Tokens)
+
+For marketplace/category metadata like conditionId/conditionName:
+
+```javascript
+import { getSellMetadataApiToken } from '@naosan/ebay-oauth-token-manager';
+const token = await getSellMetadataApiToken();
+// Example endpoint:
+// GET https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?category_id=123
+```
+
+See `examples/sell-metadata-item-conditions.js` for a runnable script.
 
 ### Multi-Instance Coordination (SSOT)
 
@@ -249,7 +250,7 @@ Need to initialize both the SQLite database and the encrypted JSON cache (dual s
      --tokens ./config/ebay-tokens.encrypted.json
    ```
 
-The script encrypts the refresh token with AES-256-CBC, writes it to `ebay_tokens.sqlite`, and mirrors the payload in the machine-shared encrypted JSON file. This matches the default behaviour of `UserAccessToken_AuthorizationCodeManager`, making it easy to bootstrap new environments or recover from accidental file deletions.
+The script saves tokens using the same encryption modes as the library: database fields are encrypted with AES-256-GCM, and the local JSON cache uses AES-256-CBC. This matches the default behaviour of `UserAccessToken_AuthorizationCodeManager`, making it easy to bootstrap new environments or recover from accidental file deletions.
 
 ---
 
@@ -262,16 +263,18 @@ The library automatically creates storage directories and manages token persiste
 #### 1. SQLite Database (Primary Storage)
 **Location**: `./database/ebay_tokens.sqlite` (configurable)
 **Contains**:
-- `access_token` - Encrypted access tokens (AES-256-CBC)
-- `refresh_token` - Encrypted refresh tokens (AES-256-CBC) 
+- `access_token` - Encrypted access tokens (AES-256-GCM)
+- `refresh_token` - Encrypted refresh tokens (AES-256-GCM) 
 - `account_name` - eBay account identifier (unique key)
 - `app_id` - eBay application ID
 - `expires_in` - Token expiration time (seconds)
 - Token metadata and timestamps
 
 #### 2. Encrypted JSON File (Dual Storage)
-**Windows**: `%PROGRAMDATA%\ebay-oauth-tokens\ebay-tokens.encrypted.json`
-**Linux/Mac**: `$HOME/ebay-oauth-tokens/ebay-tokens.encrypted.json`
+Default locations (auto-created):
+**Windows**: `%LOCALAPPDATA%\ebay-oauth-tokens\ebay-tokens.encrypted.json` (fallback: `%APPDATA%`)
+**macOS**: `~/Library/Application Support/ebay-oauth-tokens/ebay-tokens.encrypted.json`
+**Linux**: `~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json` (or `$XDG_DATA_HOME`)
 **Contains**:
 - Complete token data (access + refresh tokens)
 - Expiration information and timestamps
@@ -288,8 +291,8 @@ The library automatically creates storage directories and manages token persiste
 
 | Token Type | Storage Location | Encryption | Lifetime | Purpose |
 |------------|------------------|------------|----------|---------|
-| **User Access Token** | Database + JSON | AES-256-CBC/GCM | ~2 hours | Trading API access |
-| **User Refresh Token** | Database + JSON + SSOT | AES-256-CBC/GCM | ~18 months | Token renewal |
+| **User Access Token** | Database + JSON | AES-256-GCM (DB), AES-256-CBC (JSON) | ~2 hours | Trading API access |
+| **User Refresh Token** | Database + JSON + SSOT | AES-256-GCM (DB/SSOT), AES-256-CBC (JSON) | ~18 months | Token renewal |
 | **Application Access Token** | Memory only | None | ~2 hours | Browse API access |
 
 ### Automatic Directory Creation
@@ -328,12 +331,13 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 
 ## 🔐 Security Features
 
-### AES-256-GCM Encryption
+### Encryption Modes
 
-All tokens are encrypted using industry-standard AES-256-GCM with:
-- **Machine-specific keys**: Derived from master key + machine ID
-- **Authenticated encryption**: Prevents tampering
-- **Unique initialization vectors**: Each encryption is unique
+- **Database (SQLite) fields**: AES-256-GCM (authenticated encryption)
+- **Local JSON cache**: AES-256-CBC (compatible and efficient for file payloads)
+- **SSOT (central JSON)**: AES-256-GCM with AAD
+
+All modes use machine-specific keys by default and unique initialization vectors per encryption.
 
 ### Secure Key Management
 
@@ -551,7 +555,8 @@ await manager.setRefreshToken('your_refresh_token', 'account_name');
 ```bash
 # Ensure proper file permissions
 chmod 600 ./database/ebay_tokens.sqlite
-chmod 600 ./tokens/ebay_tokens.json
+# Example (Linux): adjust the JSON cache path for your OS
+chmod 600 ~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json
 ```
 
 #### SSOT coordination issues
@@ -567,8 +572,9 @@ const config = {
 
 ## 📋 Requirements
 
-- **Node.js**: ≥18.0.0
-- **Dependencies**: `axios`, `sqlite3`, `dotenv`
+- **Node.js**: ≥16.0.0
+- **Dependencies**: `axios`, `dotenv`
+- **Peer dependencies** (install in your app): `sqlite`, `sqlite3`
 - **File System**: Write permissions for token storage
 - **Network**: HTTPS access to eBay APIs
 
@@ -603,7 +609,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 For issues and questions:
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/your-repo/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/ebay-oauth-token-manager/issues)
 - **eBay Developer Support**: For eBay API-specific questions
 - **Security Issues**: Please report privately to maintain security
 
