@@ -71,6 +71,27 @@ export const getTaxonomyApiToken = (options = {}) => {
 };
 
 /**
+ * Sell Metadata API 用の User Access Token 取得
+ * 用途: マーケットプレイス/カテゴリ条件（conditionId, conditionName）取得など
+ * OAuth2 Flow: Authorization Code Grant（ユーザー同意・リフレッシュトークンが必要）
+ * @param {string} appId - eBay App ID
+ * @returns {Promise<string>} - Sell Metadata 用 User Access Token
+ */
+export const getSellMetadataApiToken = (appId) => {
+  console.log('🧭 Getting Sell Metadata API User Access Token');
+  if (!appId) {
+    appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME || process.env.EBAY_CLIENT_ID;
+  }
+
+  if (!appId) {
+    console.warn('⚠️ No App ID provided for Sell Metadata; falling back to "default"');
+    appId = 'default';
+  }
+
+  return defaultTokenManager.getUserAccessTokenByAppId(appId);
+};
+
+/**
  * Trading API専用のUser Access Token取得
  * 用途: 出品、入札、ユーザー固有操作
  * OAuth2 Flow: Authorization Code Grant
