@@ -8,6 +8,20 @@
 tokens/
 *.encrypted.json
 database/
+config/refresh-ssot.json
+config/refresh-ssot.json.locks/
+
+# Local secret settings - Never commit local credentials
+config/tokenManagerConfig.js
+
+# Local databases and logs (noise + may contain data)
+*.sqlite
+*.db
+*.log
+
+# Temporary directories
+tmp/
+temp/
 
 # Development tools and AI assistants - Do not commit to GitHub
 .claude/
