@@ -205,7 +205,9 @@ When you receive a new refresh token (for example, after rotating credentials), 
    EBAY_CLIENT_SECRET=your_production_client_secret
    EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
    EBAY_ACCOUNT_NAME=tokyo-1uppers
-   # Optional: override the SSOT location (defaults to config/refresh-ssot.json)
+   # Optional: SSOT location
+   # For multi-instance sync, set an explicit path. The repository no longer tracks
+   # config/refresh-ssot.json (gitignored). Point to a secure location instead:
    # OAUTH_SSOT_JSON=/secure/shared/refresh-ssot.json
    ```
 2. Execute the updater with the fresh refresh token:
@@ -222,6 +224,8 @@ When you receive a new refresh token (for example, after rotating credentials), 
    ```
 
 The script increments the SSOT version when it writes the encrypted refresh token so that other instances immediately recognize the update.
+
+> Security note: `config/refresh-ssot.json` is intentionally excluded from Git and should not be committed. If you want a local placeholder, copy `config/refresh-ssot.example.json` to `config/refresh-ssot.json` on your machine or set `OAUTH_SSOT_JSON` to a secure shared path.
 
 #### 🪄 Dual storage refresh token seeder
 
