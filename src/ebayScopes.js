@@ -69,6 +69,17 @@ export const EBAY_SCOPES = {
     'https://api.ebay.com/oauth/api_scope/sell.stores'
   ],
   
+  // Seller APIs - Marketing only
+  MARKETING_READONLY: [
+    'https://api.ebay.com/oauth/api_scope',
+    'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
+  ],
+
+  MARKETING_FULL: [
+    'https://api.ebay.com/oauth/api_scope',
+    'https://api.ebay.com/oauth/api_scope/sell.marketing'
+  ],
+
   // Buy APIs
   BUY_APIS: [
     'https://api.ebay.com/oauth/api_scope',
@@ -137,6 +148,8 @@ export function getScopesForApiType(apiType, readOnly = false) {
     return EBAY_SCOPES.REST_API_BASIC;
   case 'sell':
     return readOnly ? EBAY_SCOPES.SELL_READONLY : EBAY_SCOPES.SELL_FULL;
+  case 'marketing':
+    return readOnly ? EBAY_SCOPES.MARKETING_READONLY : EBAY_SCOPES.MARKETING_FULL;
   case 'buy':
     return EBAY_SCOPES.BUY_APIS;
   case 'commerce':

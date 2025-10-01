@@ -34,13 +34,20 @@ npm install @naosan/ebay-oauth-token-manager
 ### Basic Usage
 
 ```javascript
-import { getTradingApiToken, getBrowseApiToken } from '@naosan/ebay-oauth-token-manager';
+import {
+  getTradingApiToken,
+  getBrowseApiToken,
+  getMarketingApiToken
+} from '@naosan/ebay-oauth-token-manager';
 
-// For Trading API (User Access Tokens)
+// Trading API (User Access Tokens)
 const tradingToken = await getTradingApiToken('your-app-id');
 
-// For Browse API (Application Access Tokens)  
+// Browse API (Application Access Tokens)
 const browseToken = await getBrowseApiToken();
+
+// Marketing API (User Access Tokens)
+const marketingToken = await getMarketingApiToken('your-app-id');
 ```
 
 ### Choosing the Right Token
@@ -55,8 +62,8 @@ Use the appropriate token type based on the API family and whether user consent 
 
 - User Access Token (IAF; Authorization Code)
   - When: User account–scoped operations that require consent
-  - APIs: Trading, Sell Metadata (e.g., item condition policies by category)
-  - How: `getTradingApiToken()`, `getSellMetadataApiToken()`
+  - APIs: Trading, Sell Metadata, Marketing (e.g., promotions & campaigns)
+  - How: `getTradingApiToken()`, `getSellMetadataApiToken()`, `getMarketingApiToken()`
   - Requirements: Initial refresh token (via manual OAuth). Seed with `EBAY_INITIAL_REFRESH_TOKEN` or call `setRefreshToken()`
 
 ### Environment Setup
@@ -178,6 +185,24 @@ const token = await getSellMetadataApiToken();
 ```
 
 See `examples/sell-metadata-item-conditions.js` for a runnable script.
+
+### Marketing API (User Access Tokens)
+
+For promotions, ad campaigns, and merchandising workflows:
+
+```javascript
+import { getMarketingApiToken } from '@naosan/ebay-oauth-token-manager';
+
+const token = await getMarketingApiToken('your_app_id', {
+  readOnly: false,    // Set true for sell.marketing.readonly scope
+  forceRefresh: false // Set true to force refresh with Marketing scopes every call
+});
+
+// Example endpoint:
+// GET https://api.ebay.com/sell/marketing/v1/ad_campaign
+```
+
+> ⚠️ 事前に `sell.marketing` または `sell.marketing.readonly` を含むスコープで取得したリフレッシュトークンが必要です。
 
 ### Multi-Instance Coordination (SSOT)
 
