@@ -3,6 +3,7 @@ import LocalSharedTokenManager from './LocalSharedTokenManager.js';
 import ApplicationAccessToken_ClientCredentialsManager from './ApplicationAccessToken_ClientCredentialsManager.js';
 import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_AuthorizationCodeManager.js';
 import { loadConfig } from './config.js';
+import { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType } from './ebayScopes.js';
 
 // Load configuration
 const config = loadConfig();
@@ -19,7 +20,7 @@ export {
 };
 
 // Export OAuth scope utilities for convenience
-export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType } from './ebayScopes.js';
+export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType };
 
 // ========================================
 // CORE TOKEN FUNCTIONS (API-SPECIFIC METHODS)
@@ -115,6 +116,86 @@ export const getTradingApiToken = (appId) => {
 
   // Always use database-based manager with automatic dual storage
   return defaultTokenManager.getUserAccessTokenByAppId(appId);
+};
+
+/**
+ * Marketing API専用のUser Access Token取得
+ * 用途: プロモーション、キャンペーン管理などのマーケティング機能
+ * OAuth2 Flow: Authorization Code Grant（事前にsell.marketing系スコープで同意済みのリフレッシュトークンが必要）
+ * @param {string|Object} appId - eBay App ID もしくはオプションオブジェクト（互換用）
+ * @param {Object} [options]
+ * @param {boolean} [options.readOnly=false] - 読み取り専用スコープを要求するかどうか
+ * @param {boolean} [options.forceRefresh=false] - 常にリフレッシュトークンで再発行するかどうか
+ * @param {string|string[]} [options.scope] - カスタムスコープを明示する場合に使用
+ * @returns {Promise<string>} Marketing API用 User Access Token
+ */
+export const getMarketingApiToken = async (appId, options = {}) => {
+  console.log('📣 Getting Marketing API User Access Token');
+
+  // Backward compatibility: first argument can be options object
+  if (typeof appId === 'object' && appId !== null) {
+    options = appId;
+    appId = undefined;
+  }
+
+  const {
+    readOnly = false,
+    forceRefresh = false,
+    scope: scopeOverride
+  } = options;
+
+  let effectiveAppId = appId ||
+    config.defaultAppId ||
+    process.env.EBAY_DEFAULT_APP_ID ||
+    process.env.EBAY_API_APP_NAME ||
+    process.env.EBAY_CLIENT_ID;
+
+  if (!effectiveAppId) {
+    console.warn('⚠️ No App ID provided for Marketing API; falling back to "default"');
+    effectiveAppId = 'default';
+  }
+
+  let effectiveScopeString = '';
+  if (Array.isArray(scopeOverride) && scopeOverride.length > 0) {
+    effectiveScopeString = getScopeString(scopeOverride);
+  } else if (typeof scopeOverride === 'string' && scopeOverride.trim().length > 0) {
+    effectiveScopeString = scopeOverride.trim();
+  } else {
+    const presetScopes = readOnly ? EBAY_SCOPES.MARKETING_READONLY : EBAY_SCOPES.MARKETING_FULL;
+    effectiveScopeString = getScopeString(presetScopes);
+  }
+
+  if (!forceRefresh) {
+    return defaultTokenManager.getUserAccessTokenByAppId(effectiveAppId);
+  }
+
+  if (typeof defaultTokenManager.getTokenByAppId !== 'function' ||
+      typeof defaultTokenManager.renewUserAccessTokenByAppId !== 'function') {
+    console.warn('⚠️ Current token manager does not support forced refresh; returning existing token.');
+    return defaultTokenManager.getUserAccessTokenByAppId(effectiveAppId);
+  }
+
+  const tokenData = await defaultTokenManager.getTokenByAppId(effectiveAppId);
+  if (!tokenData) {
+    throw new Error(`No token found for App ID: ${effectiveAppId}. Seed a refresh token before requesting Marketing API access.`);
+  }
+
+  const refreshOptions = effectiveScopeString
+    ? { scope: effectiveScopeString }
+    : {};
+
+  const refreshed = await defaultTokenManager.renewUserAccessTokenByAppId(
+    effectiveAppId,
+    tokenData,
+    refreshOptions
+  );
+
+  if (refreshed?.access_token) {
+    return refreshed.access_token;
+  }
+
+  // Fallback: return the stored token after refresh
+  return defaultTokenManager.getUserAccessTokenByAppId(effectiveAppId);
 };
 
 // ========================================
