@@ -20,12 +20,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Naosan/ebay-oauth-token-manager.git"
+    "url": "https://github.com/Naosan/e-auth-token-manager.git"
   },
   "bugs": {
-    "url": "https://github.com/Naosan/ebay-oauth-token-manager/issues"
+    "url": "https://github.com/Naosan/e-auth-token-manager/issues"
   },
-  "homepage": "https://github.com/Naosan/ebay-oauth-token-manager#readme",
+  "homepage": "https://github.com/Naosan/e-auth-token-manager#readme",
   "engines": {
     "node": ">=16.0.0"
   },
