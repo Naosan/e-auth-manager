@@ -1,8 +1,6 @@
 # eBay OAuth Token Manager
 
 **A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with enterprise-grade features**
-
-[![npm version](https://badge.fury.io/js/@naosan/ebay-oauth-token-manager.svg)](https://www.npmjs.com/package/@naosan/ebay-oauth-token-manager)
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -28,7 +26,7 @@ This library provides robust OAuth 2.0 token management for eBay APIs with sophi
 ### Installation
 
 ```bash
-npm install @naosan/ebay-oauth-token-manager
+npm install @naosan-internal/pipeline-kit
 ```
 
 ### Basic Usage
@@ -38,7 +36,7 @@ import {
   getTradingApiToken,
   getBrowseApiToken,
   getMarketingApiToken
-} from '@naosan/ebay-oauth-token-manager';
+} from '@naosan-internal/pipeline-kit';
 
 // Trading API (User Access Tokens)
 const tradingToken = await getTradingApiToken('your-app-id');
@@ -137,7 +135,7 @@ The library implements a sophisticated 5-layer retrieval system:
 For private operations requiring user authorization:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@naosan/ebay-oauth-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from '@naosan-internal/pipeline-kit';
 
 const manager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_client_id',
@@ -157,12 +155,37 @@ const expiration = await manager.getUserTokenExpiration('your_app_id');
 const accountName = await manager.getUserAccountName('your_app_id');
 ```
 
+#### Refresh token health checks
+
+```javascript
+import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan-internal/pipeline-kit';
+
+const isHealthy = await checkRefreshTokenValidity('your_app_id');
+const health = await getRefreshTokenHealth('your_app_id');
+
+console.log(health);
+// {
+//   appId: 'your_app_id',
+//   isValid: false,
+//   source: null,
+//   layers: {
+//     database: { attempted: true, status: 'invalid', message: 'No valid refresh token found in database', error: null },
+//     encryptedJson: { attempted: true, status: 'invalid', message: 'No valid refresh token found in encrypted JSON cache', error: null }
+//   }
+// }
+```
+
+- The check now mirrors the runtime retrieval order: **database → encrypted JSON cache** (with both layers guarded by the same encryption key logic).
+- If the SQLite store is empty but the shared encrypted JSON still holds a valid refresh token, the helper returns `true` so multi-project setups stay operational.
+- `getRefreshTokenHealth(appId)` exposes the same decision tree with diagnostics, including the layer that produced the valid token (or why none were found). Possible `status` values are `valid`, `invalid`, `error`, `not_available`, and `not_attempted`.
+- Use actual token retrieval (`getTradingApiToken(appId)` or similar) when you want to assert full API readiness—those calls already fall back in the same order and refresh automatically when needed.
+
 ### Browse API (Application Access Tokens)
 
 For public data access:
 
 ```javascript
-import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/ebay-oauth-token-manager';
+import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan-internal/pipeline-kit';
 
 const manager = new ApplicationAccessToken_ClientCredentialsManager({
   clientId: 'your_client_id',
@@ -178,7 +201,7 @@ const token = await manager.getApplicationAccessToken();
 For marketplace/category metadata like conditionId/conditionName:
 
 ```javascript
-import { getSellMetadataApiToken } from '@naosan/ebay-oauth-token-manager';
+import { getSellMetadataApiToken } from '@naosan-internal/pipeline-kit';
 const token = await getSellMetadataApiToken();
 // Example endpoint:
 // GET https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?category_id=123
@@ -191,7 +214,7 @@ See `examples/sell-metadata-item-conditions.js` for a runnable script.
 For promotions, ad campaigns, and merchandising workflows:
 
 ```javascript
-import { getMarketingApiToken } from '@naosan/ebay-oauth-token-manager';
+import { getMarketingApiToken } from '@naosan-internal/pipeline-kit';
 
 const token = await getMarketingApiToken('your_app_id', {
   readOnly: false,    // Set true for sell.marketing.readonly scope

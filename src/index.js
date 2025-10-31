@@ -1,4 +1,4 @@
-// @your-org/ebay-oauth-token-manager - Main Entry Point
+// @naosan-internal/pipeline-kit - Main Entry Point
 import LocalSharedTokenManager from './LocalSharedTokenManager.js';
 import ApplicationAccessToken_ClientCredentialsManager from './ApplicationAccessToken_ClientCredentialsManager.js';
 import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_AuthorizationCodeManager.js';
@@ -21,6 +21,93 @@ export {
 
 // Export OAuth scope utilities for convenience
 export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType };
+
+const resolveAppId = (maybeAppId) => {
+  if (typeof maybeAppId === 'string' && maybeAppId.trim().length > 0) {
+    return maybeAppId;
+  }
+
+  return config.defaultAppId ||
+    process.env.EBAY_CLIENT_ID ||
+    'default';
+};
+
+const buildLayerState = () => ({
+  attempted: false,
+  status: 'not_attempted',
+  message: null,
+  error: null
+});
+
+/**
+ * Inspect refresh token health across storage layers
+ * @param {string} [appId]
+ * @returns {Promise<{appId: string, isValid: boolean, source: ('database'|'encrypted-json'|null), layers: { database: Object, encryptedJson: Object }}>} Detailed health information
+ */
+export const getRefreshTokenHealth = async (appId) => {
+  const effectiveAppId = resolveAppId(appId);
+
+  const health = {
+    appId: effectiveAppId,
+    isValid: false,
+    source: null,
+    layers: {
+      database: buildLayerState(),
+      encryptedJson: buildLayerState()
+    }
+  };
+
+  const databaseLayer = health.layers.database;
+
+  if (typeof defaultTokenManager.checkRefreshTokenValidity === 'function') {
+    databaseLayer.attempted = true;
+    try {
+      const isValidInDb = await defaultTokenManager.checkRefreshTokenValidity(effectiveAppId);
+      databaseLayer.status = isValidInDb ? 'valid' : 'invalid';
+      if (isValidInDb) {
+        health.isValid = true;
+        health.source = 'database';
+        databaseLayer.message = 'Valid refresh token found in database';
+        return health;
+      }
+      databaseLayer.message = 'No valid refresh token found in database';
+    } catch (error) {
+      databaseLayer.status = 'error';
+      databaseLayer.error = error?.message || String(error);
+      databaseLayer.message = 'Database refresh token check failed';
+    }
+  } else {
+    databaseLayer.status = 'not_available';
+    databaseLayer.message = 'Database layer does not expose refresh token validity check';
+  }
+
+  const fileLayer = health.layers.encryptedJson;
+  const fileManagerCheck = defaultTokenManager.fileTokenManager?.checkRefreshTokenValidity;
+
+  if (typeof fileManagerCheck === 'function') {
+    fileLayer.attempted = true;
+    try {
+      const isValidInFile = await fileManagerCheck.call(defaultTokenManager.fileTokenManager, effectiveAppId);
+      fileLayer.status = isValidInFile ? 'valid' : 'invalid';
+      if (isValidInFile) {
+        health.isValid = true;
+        health.source = 'encrypted-json';
+        fileLayer.message = 'Valid refresh token found in encrypted JSON';
+        return health;
+      }
+      fileLayer.message = 'No valid refresh token found in encrypted JSON cache';
+    } catch (error) {
+      fileLayer.status = 'error';
+      fileLayer.error = error?.message || String(error);
+      fileLayer.message = 'Encrypted JSON refresh token check failed';
+    }
+  } else {
+    fileLayer.status = 'not_available';
+    fileLayer.message = 'Encrypted JSON layer does not expose refresh token validity check';
+  }
+
+  return health;
+};
 
 // ========================================
 // CORE TOKEN FUNCTIONS (API-SPECIFIC METHODS)
@@ -270,23 +357,37 @@ export const initialize = () => {
  * @param {string} [appId] - eBay App ID to check (optional)
  * @returns {Promise<boolean>} True if User Refresh Token is valid, false if expired or not found
  */
-export const checkRefreshTokenValidity = (appId) => {
-  if (!appId) {
-    // Use eBay official naming convention
-    appId = config.defaultAppId || 
-             process.env.EBAY_CLIENT_ID ||
-             'default';
+export const checkRefreshTokenValidity = async (appId) => {
+  const health = await getRefreshTokenHealth(appId);
+  const { database, encryptedJson } = health.layers;
+
+  if (health.isValid) {
+    if (health.source === 'database') {
+      console.log(`✅ Refresh token valid in database for App ID: ${health.appId}`);
+    } else if (health.source === 'encrypted-json') {
+      console.log(`✅ Refresh token valid in encrypted JSON (fallback) for App ID: ${health.appId}`);
+    }
+    return true;
   }
-  
-  // Always use database-based manager with automatic dual storage
-  if (typeof defaultTokenManager.checkRefreshTokenValidity === 'function') {
-    return defaultTokenManager.checkRefreshTokenValidity(appId);
+
+  if (database.status === 'invalid') {
+    console.warn(`⚠️ No valid refresh token found in database for App ID: ${health.appId}`);
+  } else if (database.status === 'error') {
+    console.warn(`⚠️ Database refresh token check failed for ${health.appId}: ${database.error}`);
+  } else if (database.status === 'not_available') {
+    console.warn('⚠️ Database refresh token check is not available in the current token manager implementation.');
   }
-  if (defaultTokenManager.fileTokenManager?.checkRefreshTokenValidity) {
-    // クラス側未実装でも、JSON層で全体チェックが可能
-    return defaultTokenManager.fileTokenManager.checkRefreshTokenValidity(appId);
+
+  if (encryptedJson.status === 'invalid') {
+    console.warn(`⚠️ No valid refresh token found in encrypted JSON for App ID: ${health.appId}`);
+  } else if (encryptedJson.status === 'error') {
+    console.warn(`⚠️ Encrypted JSON refresh token check failed: ${encryptedJson.error}`);
+  } else if (encryptedJson.status === 'not_available') {
+    console.warn('⚠️ Encrypted JSON refresh token check is not available in the current token manager implementation.');
   }
-  return Promise.resolve(false);
+
+  console.error(`❌ No valid refresh token found in database or encrypted JSON for App ID: ${health.appId}`);
+  return false;
 };
 
 /**

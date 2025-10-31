@@ -31,6 +31,6 @@ export const TOKEN_CONFIG = {
 
 // Usage example:
 // import { TOKEN_CONFIG } from './config/tokenManagerConfig.js';
-// import { UserAccessToken_AuthorizationCodeManager } from '@your-org/ebay-oauth-token-manager';
+// import { UserAccessToken_AuthorizationCodeManager } from '@naosan-internal/pipeline-kit';
 // 
 // const tokenManager = new UserAccessToken_AuthorizationCodeManager(TOKEN_CONFIG);
