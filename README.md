@@ -1,4 +1,4 @@
-# e-auth-token-manager
+# e-auth-manager
 
 **A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with enterprise-grade features**
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -85,12 +85,12 @@ specifying a custom key. This also applies to SSOT coordination—set
 instance can decrypt the shared file.
 
 ```bash
-# e-auth-token-manager
+# e-auth-manager
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
-# e-auth-token-manager
-# e-auth-token-manager
+# e-auth-manager
+# e-auth-manager
 ```
 
 > **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
@@ -436,10 +436,10 @@ Automatically sets restrictive permissions on token files:
 ### Production vs Sandbox
 
 ```bash
-# e-auth-token-manager
+# e-auth-manager
 EBAY_ENVIRONMENT=PRODUCTION
 
-# e-auth-token-manager
+# e-auth-manager
 EBAY_ENVIRONMENT=SANDBOX
 ```
 
@@ -468,10 +468,10 @@ The library automatically uses appropriate API endpoints:
 2. Set via environment variable or API:
 
 ```bash
-# e-auth-token-manager
+# e-auth-manager
 EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
 
-# e-auth-token-manager
+# e-auth-manager
 await manager.setRefreshToken('your_refresh_token', 'account_name');
 ```
 
@@ -605,9 +605,9 @@ await manager.setRefreshToken('your_refresh_token', 'account_name');
 
 #### Permission denied on token files
 ```bash
-# e-auth-token-manager
+# e-auth-manager
 chmod 600 ./database/ebay_tokens.sqlite
-# e-auth-token-manager
+# e-auth-manager
 chmod 600 ~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json
 ```
 
@@ -661,10 +661,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 For issues and questions:
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-token-manager/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-manager/issues)
 - **eBay Developer Support**: For eBay API-specific questions
 - **Security Issues**: Please report privately to maintain security
 
 ---
 
 *Built with ❤️ for the eBay developer community*
+
