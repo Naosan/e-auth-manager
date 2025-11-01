@@ -1,30 +1,13 @@
 {
   "name": "@naosan/e-auth-manager",
   "version": "1.1.1",
-  "description": "Comprehensive OAuth 2.0 token management library with SQLite storage and file-based backup",
+  "description": "Minimal OAuth 2.0 token management utilities for Node.js",
   "main": "src/index.js",
   "type": "module",
-  "keywords": [
-    "oauth",
-    "oauth2",
-    "token",
-    "management",
-    "api",
-    "authentication",
-    "authorization",
-    "sqlite",
-    "encryption"
-  ],
+  "keywords": [],
   "author": "Naosan",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Naosan/e-auth-manager.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Naosan/e-auth-manager/issues"
-  },
-  "homepage": "https://github.com/Naosan/e-auth-manager#readme",
+  
   "engines": {
     "node": ">=16.0.0"
   },
@@ -45,6 +28,8 @@
     "test:unix": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
     "test:windows": "set NODE_OPTIONS=--experimental-vm-modules&& jest",
     "lint": "eslint src/",
+    "prepack": "node scripts/prepack-readme.cjs prepare",
+    "postpack": "node scripts/prepack-readme.cjs restore",
     "example:database": "node examples/database-example.js",
     "example:file": "node examples/file-example.js",
     "example:dual-storage": "node examples/dual-storage-example.js",
@@ -52,11 +37,12 @@
   },
   "files": [
     "src/",
-    "config/",
-    "examples/",
-    "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "exports": {
     ".": "./src/index.js",
     "./database": "./src/UserAccessToken_AuthorizationCodeManager.js",
