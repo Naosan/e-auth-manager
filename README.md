@@ -444,7 +444,7 @@ EBAY_ENVIRONMENT=SANDBOX
 
 The library automatically uses appropriate API endpoints:
 - **Production**: `https://api.example.com/v1/resource`
-- **Sandbox**: `https://api.sandbox.ebay.com/identity/v1/oauth2/token`
+- **Sandbox**: `https://api.sandbox.example.com/oauth2/token`
 
 ---
 
@@ -661,3 +661,4 @@ For issues and questions:
 ---
 
 *Built for developers*
+
