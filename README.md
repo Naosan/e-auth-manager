@@ -627,17 +627,11 @@ const config = {
 - **Dependencies**: `axios`, `dotenv`
 - **Peer dependencies** (install in your app): `sqlite`, `sqlite3`
 - **File System**: Write permissions for token storage
-- **Network**: HTTPS access to eBay APIs
+- **Network**: HTTPS access to your API endpoints
 
 ---
 
-## 当 Related Documentation
-
-- [eBay Developer Program](https://developer.ebay.com/)
-- [eBay OAuth 2.0 Documentation](https://developer.ebay.com/api-docs/static/oauth-tokens.html)
-- [eBay API Scopes](https://developer.ebay.com/api-docs/static/oauth-scopes.html)
-
----
+## 📖 Related Documentation`n`n- OAuth 2.0 (IETF RFC 6749)`n- OAuth 2.0 for Native Apps (BCP 212 / RFC 8252)`n- OAuth 2.0 for Browser-Based Apps (BCP 212)`n`n---
 
 ## ､・Contributing
 
@@ -666,7 +660,4 @@ For issues and questions:
 
 ---
 
-*Built with 笶､・・for the eBay developer community*
-
-
-
+*Built for developers*
