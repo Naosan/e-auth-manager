@@ -1,11 +1,11 @@
-# Agent Guide: eBay OAuth Token Manager
+# Agent Guide: e-auth-manager
 
 This document gives AI coding agents concise, practical instructions for working in this repository.
 
 ## What This Repo Is
 - Node.js library (ESM) for managing eBay OAuth 2.0 tokens.
 - Production‑oriented features: dual storage (SQLite + encrypted JSON), AES‑256 encryption, multi‑instance coordination (SSOT), and API‑specific helpers.
-- Package name: `@naosan-internal/pipeline-kit` (published to GitHub Packages).
+- Package name: `@naosan/e-auth-manager` (published to GitHub Packages).
 - Minimum Node version: `>=16`.
 
 ## How It’s Used
@@ -43,7 +43,7 @@ This document gives AI coding agents concise, practical instructions for working
 ## Packaging / Registry
 - Published to GitHub Packages (see `.github/workflows/publish.yml`).
 - `package.json` defines:
-  - `name`: `@naosan-internal/pipeline-kit`
+  - `name`: `@naosan/e-auth-manager`
   - `peerDependencies`: `sqlite3`, `sqlite` (consumers must install)
   - `type`: `module` (ESM syntax)
 - To consume from GitHub Packages:
@@ -71,7 +71,7 @@ This document gives AI coding agents concise, practical instructions for working
 - `publish.yml` publishes to GitHub Packages on GitHub Releases using `secrets.GITHUB_TOKEN`.
 
 ## Quick One‑Liner for Agents
-"This repo is an ESM Node library providing eBay OAuth token management (app+user flows) with SQLite + encrypted JSON storage; import from `@naosan-internal/pipeline-kit`, Node >=16."
+"This repo is an ESM Node library providing eBay OAuth token management (app+user flows) with SQLite + encrypted JSON storage; import from `@naosan/e-auth-manager`, Node >=16."
 
 ## Safety Notes
 - Never commit real tokens/credentials.
