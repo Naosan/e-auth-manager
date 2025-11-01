@@ -26,7 +26,7 @@ This library provides robust OAuth 2.0 token management for eBay APIs with sophi
 ### Installation
 
 ```bash
-npm install @naosan-internal/pipeline-kit
+npm install @naosan/e-auth-manager
 ```
 
 ### Basic Usage
@@ -36,7 +36,7 @@ import {
   getTradingApiToken,
   getBrowseApiToken,
   getMarketingApiToken
-} from '@naosan-internal/pipeline-kit';
+} from '@naosan/e-auth-manager';
 
 // Trading API (User Access Tokens)
 const tradingToken = await getTradingApiToken('your-app-id');
@@ -135,7 +135,7 @@ The library implements a sophisticated 5-layer retrieval system:
 For private operations requiring user authorization:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@naosan-internal/pipeline-kit';
+import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-manager';
 
 const manager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_client_id',
@@ -158,7 +158,7 @@ const accountName = await manager.getUserAccountName('your_app_id');
 #### Refresh token health checks
 
 ```javascript
-import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan-internal/pipeline-kit';
+import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan/e-auth-manager';
 
 const isHealthy = await checkRefreshTokenValidity('your_app_id');
 const health = await getRefreshTokenHealth('your_app_id');
@@ -185,7 +185,7 @@ console.log(health);
 For public data access:
 
 ```javascript
-import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan-internal/pipeline-kit';
+import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/e-auth-manager';
 
 const manager = new ApplicationAccessToken_ClientCredentialsManager({
   clientId: 'your_client_id',
@@ -201,7 +201,7 @@ const token = await manager.getApplicationAccessToken();
 For marketplace/category metadata like conditionId/conditionName:
 
 ```javascript
-import { getSellMetadataApiToken } from '@naosan-internal/pipeline-kit';
+import { getSellMetadataApiToken } from '@naosan/e-auth-manager';
 const token = await getSellMetadataApiToken();
 // Example endpoint:
 // GET https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?category_id=123
@@ -214,7 +214,7 @@ See `examples/sell-metadata-item-conditions.js` for a runnable script.
 For promotions, ad campaigns, and merchandising workflows:
 
 ```javascript
-import { getMarketingApiToken } from '@naosan-internal/pipeline-kit';
+import { getMarketingApiToken } from '@naosan/e-auth-manager';
 
 const token = await getMarketingApiToken('your_app_id', {
   readOnly: false,    // Set true for sell.marketing.readonly scope
@@ -667,4 +667,5 @@ For issues and questions:
 ---
 
 *Built with 笶､・・for the eBay developer community*
+
 
