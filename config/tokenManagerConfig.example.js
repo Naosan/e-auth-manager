@@ -31,6 +31,6 @@ export const TOKEN_CONFIG = {
 
 // Usage example:
 // import { TOKEN_CONFIG } from './config/tokenManagerConfig.js';
-// import { UserAccessToken_AuthorizationCodeManager } from '@naosan-internal/pipeline-kit';
+// import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-manager';
 // 
 // const tokenManager = new UserAccessToken_AuthorizationCodeManager(TOKEN_CONFIG);
