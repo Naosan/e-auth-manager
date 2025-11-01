@@ -8,7 +8,7 @@ const ROOT = process.cwd();
 const README = path.join(ROOT, 'README.md');
 const BACKUP_DIR = path.join(ROOT, '.internal-readme-backup');
 const README_REPO = path.join(BACKUP_DIR, 'README.repo.md');
-const README_NPM = path.join(ROOT, 'README.npm.md');
+const README_NPM = path.join(ROOT, 'scripts', 'assets', 'README.npm.md');
 const MARKER = path.join(ROOT, '.readme-swapped');
 
 function exists(p) { try { fs.accessSync(p); return true; } catch { return false; } }
