@@ -1,6 +1,6 @@
 # Bulk Refresh Token Seeding Guide
 
-This guide explains how to preload or update refresh tokens for multiple eBay seller accounts using the helper script bundled with the library.
+This guide explains how to preload or update refresh tokens for multiple accounts using the helper script bundled with the library.
 
 > **Why this guide exists**
 >
@@ -11,7 +11,7 @@ This guide explains how to preload or update refresh tokens for multiple eBay se
 Use the helper script when you need to:
 
 - Register refresh tokens for more than the default account/App ID pair.
-- Update existing entries in the Single Source of Truth (SSOT) JSON or SQLite database after eBay rotates credentials.
+- Update existing entries in the Single Source of Truth (SSOT) JSON or SQLite database after your provider rotates credentials.
 - Backfill tokens in a new environment without re-running the manual OAuth flow for every seller.
 
 The helper persists tokens through the same storage layers as the runtime library:
@@ -22,7 +22,7 @@ The helper persists tokens through the same storage layers as the runtime librar
 
 ## Preparing seed data
 
-You can describe refresh tokens either inline or via a JSON file. Each entry must provide an `accountName`, `appId`, and the `refreshToken` you obtained from eBay.
+You can describe refresh tokens either inline or via a JSON file. Each entry must provide an `accountName`, `appId`, and the `refreshToken` you obtained from your OAuth provider.
 
 ### Option A: Inline JSON
 
