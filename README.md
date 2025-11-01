@@ -4,7 +4,7 @@
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----`n> Note: This library is provider-agnostic. It is not affiliated with or endorsed by any specific platform. Historical environment variable names (e.g., `EBAY_*`) are placeholders retained for compatibility and do not imply platform specificity.`n
+---`n> Note: This library is provider-agnostic and is not intended for use with eBay. It is not affiliated with or endorsed by any specific platform. Historical environment variable names (e.g., `EBAY_*`) are placeholders retained for compatibility and do not imply platform specificity.`n
 
 ## 笨ｨ Overview
 
@@ -661,4 +661,5 @@ For issues and questions:
 ---
 
 *Built for developers*
+
 
