@@ -1,5 +1,5 @@
 {
-  "name": "@naosan-internal/pipeline-kit",
+  "name": "@naosan/e-auth-manager",
   "version": "1.1.1",
   "description": "Comprehensive eBay OAuth 2.0 token management library with SQLite storage and file-based backup",
   "main": "src/index.js",
@@ -65,4 +65,5 @@
     "./scopes": "./src/ebayScopes.js"
   }
 }
+
 
