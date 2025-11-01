@@ -6,11 +6,11 @@
 
 ---
 
-## ✨ Overview
+## 笨ｨ Overview
 
 This library provides robust OAuth 2.0 token management for eBay APIs with sophisticated multi-layered caching, encryption, and distributed coordination. Designed for production environments requiring high performance and security.
 
-### 🎯 Key Benefits
+### 識 Key Benefits
 
 - **Zero Configuration**: Works out-of-the-box with automatic dual storage
 - **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
@@ -21,7 +21,7 @@ This library provides robust OAuth 2.0 token management for eBay APIs with sophi
 
 ---
 
-## 🚀 Quick Start
+## 噫 Quick Start
 
 ### Installation
 
@@ -59,7 +59,7 @@ Use the appropriate token type based on the API family and whether user consent 
   - Requirements: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (no refresh token needed)
 
 - User Access Token (IAF; Authorization Code)
-  - When: User account–scoped operations that require consent
+  - When: User account窶都coped operations that require consent
   - APIs: Trading, Sell Metadata, Marketing (e.g., promotions & campaigns)
   - How: `getTradingApiToken()`, `getSellMetadataApiToken()`, `getMarketingApiToken()`
   - Requirements: Initial refresh token (via manual OAuth). Seed with `EBAY_INITIAL_REFRESH_TOKEN` or call `setRefreshToken()`
@@ -80,17 +80,17 @@ Use the appropriate token type based on the API family and whether user consent 
 If you don't provide a master key, the library automatically falls back to the current
 machine's hostname. Tokens encrypted with the default key can be decrypted across
 restarts on that same host, but they cannot be shared across different machines without
-specifying a custom key. This also applies to SSOT coordination—set
+specifying a custom key. This also applies to SSOT coordination窶敗et
 `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` whenever `OAUTH_SSOT_JSON` is used so every
 instance can decrypt the shared file.
 
 ```bash
-# e-auth-manager
+# Minimal example
 EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
-# e-auth-manager
-# e-auth-manager
+# Optional: override the per-machine default encryption key (hostname fallback is automatic)
+# EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
 > **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
@@ -103,18 +103,18 @@ Detailed instructions for the `examples/bulk-refresh-token-seed.js` helper now l
 
 ---
 
-## 🏗️ Architecture
+## 女・・Architecture
 
 ### Multi-Layer Token Retrieval System
 
 The library implements a sophisticated 5-layer retrieval system:
 
 ```
-1. Memory Cache (~1ms)          ← Fastest
+1. Memory Cache (~1ms)          竊・Fastest
 2. JSON File Cache (~10ms)      
 3. SQLite Database (~50ms)      
 4. SSOT Provider (coordination) 
-5. eBay API (~500ms)           ← Slowest (last resort)
+5. eBay API (~500ms)           竊・Slowest (last resort)
 ```
 
 ### Core Components
@@ -128,7 +128,7 @@ The library implements a sophisticated 5-layer retrieval system:
 
 ---
 
-## 📚 API Reference
+## 答 API Reference
 
 ### Trading API (User Access Tokens)
 
@@ -175,10 +175,10 @@ console.log(health);
 // }
 ```
 
-- The check now mirrors the runtime retrieval order: **database → encrypted JSON cache** (with both layers guarded by the same encryption key logic).
+- The check now mirrors the runtime retrieval order: **database 竊・encrypted JSON cache** (with both layers guarded by the same encryption key logic).
 - If the SQLite store is empty but the shared encrypted JSON still holds a valid refresh token, the helper returns `true` so multi-project setups stay operational.
 - `getRefreshTokenHealth(appId)` exposes the same decision tree with diagnostics, including the layer that produced the valid token (or why none were found). Possible `status` values are `valid`, `invalid`, `error`, `not_available`, and `not_attempted`.
-- Use actual token retrieval (`getTradingApiToken(appId)` or similar) when you want to assert full API readiness—those calls already fall back in the same order and refresh automatically when needed.
+- Use actual token retrieval (`getTradingApiToken(appId)` or similar) when you want to assert full API readiness窶杯hose calls already fall back in the same order and refresh automatically when needed.
 
 ### Browse API (Application Access Tokens)
 
@@ -225,8 +225,7 @@ const token = await getMarketingApiToken('your_app_id', {
 // GET https://api.ebay.com/sell/marketing/v1/ad_campaign
 ```
 
-> ⚠️ 事前に `sell.marketing` または `sell.marketing.readonly` を含むスコープで取得したリフレッシュトークンが必要です。
-
+> 笞・・莠句燕縺ｫ `sell.marketing` 縺ｾ縺溘・ `sell.marketing.readonly` 繧貞性繧繧ｹ繧ｳ繝ｼ繝励〒蜿門ｾ励＠縺溘Μ繝輔Ξ繝・す繝･繝医・繧ｯ繝ｳ縺悟ｿ・ｦ√〒縺吶・
 ### Multi-Instance Coordination (SSOT)
 
 Prevent refresh token conflicts across multiple instances:
@@ -243,7 +242,7 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
 });
 ```
 
-#### ⚡️ Quick SSOT refresh token updater
+#### 笞｡・・Quick SSOT refresh token updater
 
 When you receive a new refresh token (for example, after rotating credentials), run the helper script below to push the value to the SQLite database, the encrypted JSON cache, and the SSOT file in one step.
 
@@ -275,7 +274,7 @@ The script increments the SSOT version when it writes the encrypted refresh toke
 
 > Security note: `config/refresh-ssot.json` is intentionally excluded from Git and should not be committed. If you want a local placeholder, copy `config/refresh-ssot.example.json` to `config/refresh-ssot.json` on your machine or set `OAUTH_SSOT_JSON` to a secure shared path.
 
-#### 🪄 Dual storage refresh token seeder
+#### ｪ・Dual storage refresh token seeder
 
 Need to initialize both the SQLite database and the encrypted JSON cache (dual storage) with a refresh token? Use the companion seeding script to populate both locations in one command.
 
@@ -306,7 +305,7 @@ The script saves tokens using the same encryption modes as the library: database
 
 ---
 
-## 💾 Token Storage Details
+## 沈 Token Storage Details
 
 ### Storage Locations
 
@@ -367,12 +366,12 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 
 // Database directory
 ./database/ (or custom path)
-  └── ebay_tokens.sqlite
+  笏披楳笏 ebay_tokens.sqlite
 
 // SSOT directory (if configured)
 /custom/path/
-  └── shared-tokens.json
-  └── .locks/ (for process coordination)
+  笏披楳笏 shared-tokens.json
+  笏披楳笏 .locks/ (for process coordination)
 
 // Legacy migration support (automatically detected)
 // - Previous PROGRAMDATA location (Windows)
@@ -381,7 +380,7 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 
 ---
 
-## 🔐 Security Features
+## 柏 Security Features
 
 ### Encryption Modes
 
@@ -431,15 +430,15 @@ Automatically sets restrictive permissions on token files:
 
 ---
 
-## 🌐 Environment Support
+## 倹 Environment Support
 
 ### Production vs Sandbox
 
 ```bash
-# e-auth-manager
+# Production (default)
 EBAY_ENVIRONMENT=PRODUCTION
 
-# e-auth-manager
+# Sandbox
 EBAY_ENVIRONMENT=SANDBOX
 ```
 
@@ -449,11 +448,11 @@ The library automatically uses appropriate API endpoints:
 
 ---
 
-## 🔄 Token Lifecycle Management
+## 売 Token Lifecycle Management
 
 ### Refresh Token Requirements
 
-⚠️ **Important**: Refresh tokens cannot be generated programmatically and must be obtained through manual browser-based OAuth flow.
+笞・・**Important**: Refresh tokens cannot be generated programmatically and must be obtained through manual browser-based OAuth flow.
 
 ### Automatic Features
 
@@ -468,16 +467,16 @@ The library automatically uses appropriate API endpoints:
 2. Set via environment variable or API:
 
 ```bash
-# e-auth-manager
+# Via environment
 EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
 
-# e-auth-manager
+# Via API
 await manager.setRefreshToken('your_refresh_token', 'account_name');
 ```
 
 ---
 
-## 🛠️ Advanced Configuration
+## 屏・・Advanced Configuration
 
 ### Database Configuration
 
@@ -508,7 +507,7 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
 
 ---
 
-## 📊 Performance Optimization
+## 投 Performance Optimization
 
 ### Memory Caching
 
@@ -531,7 +530,7 @@ const [token1, token2, token3] = await Promise.all([
 
 ---
 
-## 🔍 Monitoring & Debugging
+## 剥 Monitoring & Debugging
 
 ### Logging
 
@@ -539,14 +538,14 @@ The library provides comprehensive logging:
 
 ```javascript
 // Success operations
-✅ Access token refreshed successfully for App ID abc123 (user@example.com)
-🔄 Auto-saved to encrypted JSON for app: abc123
-🌟 Centralized token provider (SSOT) enabled for multi-package coordination
+笨・Access token refreshed successfully for App ID abc123 (user@example.com)
+売 Auto-saved to encrypted JSON for app: abc123
+検 Centralized token provider (SSOT) enabled for multi-package coordination
 
 // Error conditions
-🚨 Failed to refresh access token for App ID abc123: invalid_grant
-⚠️ Invalid grant detected for App ID abc123, attempting recovery from SSOT...
-🔄 Retrying refresh with latest token from SSOT (version: 5)
+圷 Failed to refresh access token for App ID abc123: invalid_grant
+笞・・Invalid grant detected for App ID abc123, attempting recovery from SSOT...
+売 Retrying refresh with latest token from SSOT (version: 5)
 ```
 
 ### Error Handling
@@ -567,7 +566,7 @@ try {
 
 ---
 
-## 🧪 Testing
+## ｧｪ Testing
 
 Run the test suite:
 
@@ -578,16 +577,16 @@ npm run lint
 
 ### Test Coverage
 
-- ✅ Token encryption/decryption
-- ✅ Multi-layer caching
-- ✅ SSOT coordination and locking
-- ✅ Automatic refresh and recovery
-- ✅ Database operations
-- ✅ File I/O with proper permissions
+- 笨・Token encryption/decryption
+- 笨・Multi-layer caching
+- 笨・SSOT coordination and locking
+- 笨・Automatic refresh and recovery
+- 笨・Database operations
+- 笨・File I/O with proper permissions
 
 ---
 
-## 🔧 Troubleshooting
+## 肌 Troubleshooting
 
 ### Common Issues
 
@@ -605,9 +604,9 @@ await manager.setRefreshToken('your_refresh_token', 'account_name');
 
 #### Permission denied on token files
 ```bash
-# e-auth-manager
+# Ensure proper file permissions
 chmod 600 ./database/ebay_tokens.sqlite
-# e-auth-manager
+# Example (Linux): adjust the JSON cache path for your OS
 chmod 600 ~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json
 ```
 
@@ -622,9 +621,9 @@ const config = {
 
 ---
 
-## 📋 Requirements
+## 搭 Requirements
 
-- **Node.js**: ≥16.0.0
+- **Node.js**: 竕･16.0.0
 - **Dependencies**: `axios`, `dotenv`
 - **Peer dependencies** (install in your app): `sqlite`, `sqlite3`
 - **File System**: Write permissions for token storage
@@ -632,7 +631,7 @@ const config = {
 
 ---
 
-## 📖 Related Documentation
+## 当 Related Documentation
 
 - [eBay Developer Program](https://developer.ebay.com/)
 - [eBay OAuth 2.0 Documentation](https://developer.ebay.com/api-docs/static/oauth-tokens.html)
@@ -640,7 +639,7 @@ const config = {
 
 ---
 
-## 🤝 Contributing
+## ､・Contributing
 
 Contributions are welcome! Please ensure:
 
@@ -651,13 +650,13 @@ Contributions are welcome! Please ensure:
 
 ---
 
-## 📄 License
+## 塘 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## 📞 Support
+## 到 Support
 
 For issues and questions:
 
@@ -667,5 +666,5 @@ For issues and questions:
 
 ---
 
-*Built with ❤️ for the eBay developer community*
+*Built with 笶､・・for the eBay developer community*
 
