@@ -1,14 +1,14 @@
 # e-auth-manager
 
-**A comprehensive Node.js library for managing eBay OAuth 2.0 tokens with enterprise-grade features**
+**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features**
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
+---`n> Note: This library is provider-agnostic. It is not affiliated with or endorsed by any specific platform. Historical environment variable names (e.g., `EBAY_*`) are placeholders retained for compatibility and do not imply platform specificity.`n
 
 ## 笨ｨ Overview
 
-This library provides robust OAuth 2.0 token management for eBay APIs with sophisticated multi-layered caching, encryption, and distributed coordination. Designed for production environments requiring high performance and security.
+This library provides robust OAuth 2.0 token management for modern REST APIs with sophisticated multi-layered caching, encryption, and distributed coordination. Designed for production environments requiring high performance and security.
 
 ### 識 Key Benefits
 
@@ -38,13 +38,13 @@ import {
   getMarketingApiToken
 } from '@naosan/e-auth-manager';
 
-// Trading API (User Access Tokens)
+// User-scoped APIs (User Access Tokens)
 const tradingToken = await getTradingApiToken('your-app-id');
 
-// Browse API (Application Access Tokens)
+// Public APIs (Application Access Tokens)
 const browseToken = await getBrowseApiToken();
 
-// Marketing API (User Access Tokens)
+// Marketing-like APIs (User Access Tokens)
 const marketingToken = await getMarketingApiToken('your-app-id');
 ```
 
@@ -54,8 +54,8 @@ Use the appropriate token type based on the API family and whether user consent 
 
 - Application Access Token (Client Credentials)
   - When: Public data, no user context
-  - APIs: Browse, Taxonomy (and most other Buy* read-only APIs)
-  - How: `getBrowseApiToken()`, `getTaxonomyApiToken()`
+  - APIs: Catalog, Search, and other read-only endpoints
+  - How: `getBrowseApiToken()` (app token helper)
   - Requirements: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (no refresh token needed)
 
 - User Access Token (IAF; Authorization Code)
@@ -114,15 +114,15 @@ The library implements a sophisticated 5-layer retrieval system:
 2. JSON File Cache (~10ms)      
 3. SQLite Database (~50ms)      
 4. SSOT Provider (coordination) 
-5. eBay API (~500ms)           竊・Slowest (last resort)
+5. Remote API Endpoint (~500ms)           竊・Slowest (last resort)
 ```
 
 ### Core Components
 
 | Component | Purpose | Token Types |
 |-----------|---------|-------------|
-| **UserAccessToken_AuthorizationCodeManager** | Trading API tokens | User Access Tokens (18-month expiry) |
-| **ApplicationAccessToken_ClientCredentialsManager** | Browse API tokens | Application Access Tokens (2-hour expiry) |
+| **UserAccessToken_AuthorizationCodeManager** | User-scoped tokens | User Access Tokens (18-month expiry) |
+| **ApplicationAccessToken_ClientCredentialsManager** | App-only tokens | Application Access Tokens (2-hour expiry) |
 | **FileJsonTokenProvider** | Multi-instance coordination | SSOT (Single Source of Truth) |
 | **LocalSharedTokenManager** | Cross-project sharing | Encrypted JSON storage |
 
@@ -130,7 +130,7 @@ The library implements a sophisticated 5-layer retrieval system:
 
 ## 答 API Reference
 
-### Trading API (User Access Tokens)
+### User-scoped APIs (User Access Tokens)
 
 For private operations requiring user authorization:
 
@@ -180,7 +180,7 @@ console.log(health);
 - `getRefreshTokenHealth(appId)` exposes the same decision tree with diagnostics, including the layer that produced the valid token (or why none were found). Possible `status` values are `valid`, `invalid`, `error`, `not_available`, and `not_attempted`.
 - Use actual token retrieval (`getTradingApiToken(appId)` or similar) when you want to assert full API readiness窶杯hose calls already fall back in the same order and refresh automatically when needed.
 
-### Browse API (Application Access Tokens)
+### Public APIs (Application Access Tokens)
 
 For public data access:
 
@@ -204,12 +204,12 @@ For marketplace/category metadata like conditionId/conditionName:
 import { getSellMetadataApiToken } from '@naosan/e-auth-manager';
 const token = await getSellMetadataApiToken();
 // Example endpoint:
-// GET https://api.ebay.com/sell/metadata/v1/marketplace/EBAY_US/get_item_condition_policies?category_id=123
+// GET https://api.example.com/v1/resource
 ```
 
 See `examples/sell-metadata-item-conditions.js` for a runnable script.
 
-### Marketing API (User Access Tokens)
+### Marketing-like APIs (User Access Tokens)
 
 For promotions, ad campaigns, and merchandising workflows:
 
@@ -222,7 +222,7 @@ const token = await getMarketingApiToken('your_app_id', {
 });
 
 // Example endpoint:
-// GET https://api.ebay.com/sell/marketing/v1/ad_campaign
+// GET https://api.example.com/v1/resource
 ```
 
 > 笞・・莠句燕縺ｫ `sell.marketing` 縺ｾ縺溘・ `sell.marketing.readonly` 繧貞性繧繧ｹ繧ｳ繝ｼ繝励〒蜿門ｾ励＠縺溘Μ繝輔Ξ繝・す繝･繝医・繧ｯ繝ｳ縺悟ｿ・ｦ√〒縺吶・
@@ -287,7 +287,7 @@ Need to initialize both the SQLite database and the encrypted JSON cache (dual s
    # EBAY_DATABASE_PATH=./database/ebay_tokens.sqlite
    # EBAY_TOKEN_FILE_PATH=./config/ebay-tokens.encrypted.json
    ```
-2. Run the seeder with the refresh token you received from eBay:
+2. Run the seeder with the refresh token you received from your provider:
    ```bash
    node examples/seed-dual-storage-refresh-token.js "v=1.abcdefg"
    ```
@@ -316,8 +316,8 @@ The library automatically creates storage directories and manages token persiste
 **Contains**:
 - `access_token` - Encrypted access tokens (AES-256-GCM)
 - `refresh_token` - Encrypted refresh tokens (AES-256-GCM) 
-- `account_name` - eBay account identifier (unique key)
-- `app_id` - eBay application ID
+- `account_name` - account identifier (unique key)
+- `app_id` - your application ID
 - `expires_in` - Token expiration time (seconds)
 - Token metadata and timestamps
 
@@ -443,7 +443,7 @@ EBAY_ENVIRONMENT=SANDBOX
 ```
 
 The library automatically uses appropriate API endpoints:
-- **Production**: `https://api.ebay.com/identity/v1/oauth2/token`
+- **Production**: `https://api.example.com/v1/resource`
 - **Sandbox**: `https://api.sandbox.ebay.com/identity/v1/oauth2/token`
 
 ---
@@ -463,7 +463,7 @@ The library automatically uses appropriate API endpoints:
 
 ### Manual Refresh Token Setup
 
-1. Use eBay's OAuth flow in browser to get refresh token
+1. Use your provider's OAuth flow in browser to get refresh token
 2. Set via environment variable or API:
 
 ```bash
@@ -661,11 +661,12 @@ MIT License - see [LICENSE](LICENSE) file for details.
 For issues and questions:
 
 - **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-manager/issues)
-- **eBay Developer Support**: For eBay API-specific questions
+- Developer Support: Contact your platform's support for API-specific questions
 - **Security Issues**: Please report privately to maintain security
 
 ---
 
 *Built with 笶､・・for the eBay developer community*
+
 
 

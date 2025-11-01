@@ -1,11 +1,10 @@
 {
   "name": "@naosan/e-auth-manager",
   "version": "1.1.1",
-  "description": "Comprehensive eBay OAuth 2.0 token management library with SQLite storage and file-based backup",
+  "description": "Comprehensive OAuth 2.0 token management library with SQLite storage and file-based backup",
   "main": "src/index.js",
   "type": "module",
   "keywords": [
-    "ebay",
     "oauth",
     "oauth2",
     "token",
@@ -65,5 +64,3 @@
     "./scopes": "./src/ebayScopes.js"
   }
 }
-
-
