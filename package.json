@@ -4,10 +4,28 @@
   "description": "Minimal OAuth 2.0 token management utilities for Node.js",
   "main": "src/index.js",
   "type": "module",
-  "keywords": [],
+  "keywords": [
+    "ebay",
+    "oauth",
+    "oauth2",
+    "token",
+    "management",
+    "api",
+    "authentication",
+    "authorization",
+    "sqlite",
+    "encryption"
+  ],
   "author": "Naosan",
   "license": "MIT",
-  
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Naosan/e-auth-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Naosan/e-auth-manager/issues"
+  },
+  "homepage": "https://github.com/Naosan/e-auth-manager#readme",
   "engines": {
     "node": ">=16.0.0"
   },

@@ -1,10 +1,12 @@
 # e-auth-manager
 
-**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features**
+**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features (provider-agnostic)**
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----`n> Note: This library is provider-agnostic and is not intended for use with eBay. It is not affiliated with or endorsed by any specific platform. Historical environment variable names (e.g., `EBAY_*`) are placeholders retained for compatibility and do not imply platform specificity.`n
+> Note: Historical environment variable names (`EBAY_*`) are retained for compatibility but do not imply eBay-only usage.
+
+---
 
 ## 笨ｨ Overview
 
@@ -66,23 +68,23 @@ Use the appropriate token type based on the API family and whether user consent 
 
 ### Environment Setup
 
-1. Copy `.env.example` to `.env` and fill in your credentials.
+1. Copy `.env.example` to `.env` in your app project root and fill in your credentials. The library loads `.env` from the current working directory first, then falls back to the package root without overriding already-set values. Prefer `EAUTH_*` names; `EBAY_*` and `EBAY_API_*` are accepted for compatibility.
 2. Start with the minimal variables below, then opt into advanced options as your deployment requires.
 
 | Type | Keys | Notes |
 | --- | --- | --- |
-| **Required** | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | Needed for every token request. |
-| **Security (optional)** | `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
-| **Default refresh token** | `EBAY_INITIAL_REFRESH_TOKEN` | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EBAY_CLIENT_ID`) the first time the manager runs. |
-| **Coordination** | `OAUTH_SSOT_JSON`, `TOKEN_NAMESPACE` | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
-| **Environment** | `EBAY_ENVIRONMENT` | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
+| **Required** | `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_API_APP_NAME`, `EBAY_API_CERT_NAME`) | Needed for every token request. |
+| **Security (optional)** | `EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
+| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
+| **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
+| **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 
 If you don't provide a master key, the library automatically falls back to the current
 machine's hostname. Tokens encrypted with the default key can be decrypted across
 restarts on that same host, but they cannot be shared across different machines without
-specifying a custom key. This also applies to SSOT coordination窶敗et
-`EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY` whenever `OAUTH_SSOT_JSON` is used so every
-instance can decrypt the shared file.
+specifying a custom key. This also applies to SSOT coordination—set
+`EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) whenever `EAUTH_SSOT_JSON`
+or `OAUTH_SSOT_JSON` is used so every instance can decrypt the shared file.
 
 ```bash
 # Minimal example
@@ -90,6 +92,7 @@ EBAY_CLIENT_ID=your_ebay_client_id
 EBAY_CLIENT_SECRET=your_ebay_client_secret
 
 # Optional: override the per-machine default encryption key (hostname fallback is automatic)
+EAUTH_MASTER_KEY=generate_a_secure_key
 # EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
@@ -661,5 +664,3 @@ For issues and questions:
 ---
 
 *Built for developers*
-
-
