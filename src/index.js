@@ -1,4 +1,4 @@
-// @naosan/e-auth-multi-token-manager - Main Entry Point
+// @naosan/e-auth-manager - Main Entry Point
 import LocalSharedTokenManager from './LocalSharedTokenManager.js';
 import ApplicationAccessToken_ClientCredentialsManager from './ApplicationAccessToken_ClientCredentialsManager.js';
 import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_AuthorizationCodeManager.js';
@@ -509,3 +509,4 @@ export const getUserAccountName = (appId) => {
 export const getTokenInfo = getUserTokenInfo;
 export const getTokenExpiration = getUserTokenExpiration;
 export const getAccountName = getUserAccountName;
+
