@@ -1,7 +1,7 @@
 {
-  "name": "@naosan/e-auth-manager",
+  "name": "@naosan/e-auth-multi-token-manager",
   "version": "1.1.1",
-  "description": "Minimal OAuth 2.0 token management utilities for Node.js",
+  "description": "Multi-account OAuth 2.0 token management utilities for Node.js",
   "main": "src/index.js",
   "type": "module",
   "keywords": [
