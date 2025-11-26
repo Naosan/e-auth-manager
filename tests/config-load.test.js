@@ -6,6 +6,8 @@ describe('loadConfig env aliases and defaultAppId', () => {
   });
 
   test('prefers EAUTH_* over EBAY_*', async () => {
+    process.env.EAUTH_EBAY_CLIENT_ID = '';
+    process.env.EAUTH_EBAY_CLIENT_SECRET = '';
     process.env.EAUTH_CLIENT_ID = 'eauth-id';
     process.env.EAUTH_CLIENT_SECRET = 'eauth-secret';
     process.env.EAUTH_DEFAULT_APP_ID = 'eauth-default';
@@ -22,6 +24,10 @@ describe('loadConfig env aliases and defaultAppId', () => {
   });
 
   test('falls back to EBAY_API_* aliases and EBAY_DEFAULT_APP_ID when EBAY_CLIENT_ID/SECRET are absent', async () => {
+    process.env.EAUTH_CLIENT_ID = '';
+    process.env.EAUTH_CLIENT_SECRET = '';
+    process.env.EAUTH_EBAY_CLIENT_ID = '';
+    process.env.EAUTH_EBAY_CLIENT_SECRET = '';
     process.env.EBAY_CLIENT_ID = '';
     process.env.EBAY_CLIENT_SECRET = '';
     process.env.EBAY_DEFAULT_APP_ID = '';
