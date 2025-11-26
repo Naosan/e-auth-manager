@@ -32,35 +32,6 @@ const resolveAppId = (maybeAppId) => {
     'default';
 };
 
-const resolveAccountEntry = (accountNameOrAppId) => {
-  if (!accountNameOrAppId) {
-    return null;
-  }
-  return (config.accounts || []).find(acc =>
-    acc?.accountName === accountNameOrAppId || acc?.name === accountNameOrAppId || acc?.appId === accountNameOrAppId
-  ) || null;
-};
-
-const resolveAccountAppId = (accountNameOrAppId) => {
-  if (!accountNameOrAppId) {
-    return null;
-  }
-  const entry = resolveAccountEntry(accountNameOrAppId);
-  if (entry) {
-    return entry.appId || entry.app_id || entry.defaultAppId || entry.clientId;
-  }
-  // Fallback: allow direct appId
-  return accountNameOrAppId;
-};
-
-const requireAccountAppId = (accountNameOrAppId) => {
-  const appId = resolveAccountAppId(accountNameOrAppId);
-  if (!appId) {
-    throw new Error(`No account/appId found for: ${accountNameOrAppId}`);
-  }
-  return appId;
-};
-
 const buildLayerState = () => ({
   attempted: false,
   status: 'not_attempted',
@@ -208,11 +179,6 @@ export const getSellMetadataApiToken = (appId) => {
   return defaultTokenManager.getUserAccessTokenByAppId(appId);
 };
 
-export const getSellMetadataApiTokenByAccount = (accountName) => {
-  const appId = requireAccountAppId(accountName);
-  return getSellMetadataApiToken(appId);
-};
-
 /**
  * Trading API専用のUser Access Token取得
  * 用途: 出品、入札、ユーザー固有操作
@@ -237,17 +203,6 @@ export const getTradingApiToken = (appId) => {
 
   // Always use database-based manager with automatic dual storage
   return defaultTokenManager.getUserAccessTokenByAppId(appId);
-};
-
-// Convenience helpers for accountName-based lookup using config.accounts
-export const getUserAccessTokenByAccount = (accountName) => {
-  const appId = requireAccountAppId(accountName);
-  return defaultTokenManager.getUserAccessTokenByAppId(appId);
-};
-
-export const getTradingApiTokenByAccount = (accountName) => {
-  const appId = requireAccountAppId(accountName);
-  return getTradingApiToken(appId);
 };
 
 /**
@@ -328,11 +283,6 @@ export const getMarketingApiToken = async (appId, options = {}) => {
 
   // Fallback: return the stored token after refresh
   return defaultTokenManager.getUserAccessTokenByAppId(effectiveAppId);
-};
-
-export const getMarketingApiTokenByAccount = (accountName, options = {}) => {
-  const appId = requireAccountAppId(accountName);
-  return getMarketingApiToken(appId, options);
 };
 
 // ========================================

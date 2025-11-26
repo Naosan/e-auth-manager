@@ -28,7 +28,7 @@ This library provides robust OAuth 2.0 token management for modern REST APIs wit
 ### Installation
 
 ```bash
-npm install @naosan/e-auth-multi-token-manager
+npm install @naosan/e-auth-manager
 ```
 
 ### Basic Usage
@@ -38,7 +38,7 @@ import {
   getTradingApiToken,
   getBrowseApiToken,
   getMarketingApiToken
-} from '@naosan/e-auth-multi-token-manager';
+} from '@naosan/e-auth-manager';
 
 // User-scoped APIs (User Access Tokens)
 const tradingToken = await getTradingApiToken('your-app-id');
@@ -69,7 +69,7 @@ Use the appropriate token type based on the API family and whether user consent 
 ### Environment Setup
 
 1. Copy `.env.example` to `.env` in your app project root and fill in your credentials. The library loads `.env` from the current working directory first, then falls back to the package root without overriding already-set values. Prefer `EAUTH_*` names; `EBAY_*` and `EBAY_API_*` are accepted for compatibility.
-2. (Optional, recommended for multi-account setups) Provide a JSON config file and set `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to its path; it can hold clientId/secret, masterKey, paths, and `accounts` entries. Env vars override the file.
+2. (Optional, recommended for multi-account setups) Provide a JSON config file and point `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to it; it can hold clientId/secret, masterKey, paths, and more. Env vars override the config file.
 3. Start with the minimal variables below, then opt into advanced options as your deployment requires.
 
 | Type | Keys | Notes |
@@ -79,7 +79,7 @@ Use the appropriate token type based on the API family and whether user consent 
 | **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
 | **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
-| **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, and `accounts` list. Env vars still override it. |
+| **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, etc. Env vars still override it. |
 
 If you don't provide a master key, the library automatically falls back to the current
 machine's hostname. Tokens encrypted with the default key can be decrypted across
@@ -140,7 +140,7 @@ The library implements a sophisticated 5-layer retrieval system:
 For private operations requiring user authorization:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-multi-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-manager';
 
 const manager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_client_id',
@@ -163,7 +163,7 @@ const accountName = await manager.getUserAccountName('your_app_id');
 #### Refresh token health checks
 
 ```javascript
-import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan/e-auth-multi-token-manager';
+import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan/e-auth-manager';
 
 const isHealthy = await checkRefreshTokenValidity('your_app_id');
 const health = await getRefreshTokenHealth('your_app_id');
@@ -190,7 +190,7 @@ console.log(health);
 For public data access:
 
 ```javascript
-import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/e-auth-multi-token-manager';
+import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/e-auth-manager';
 
 const manager = new ApplicationAccessToken_ClientCredentialsManager({
   clientId: 'your_client_id',
@@ -206,7 +206,7 @@ const token = await manager.getApplicationAccessToken();
 For marketplace/category metadata like conditionId/conditionName:
 
 ```javascript
-import { getSellMetadataApiToken } from '@naosan/e-auth-multi-token-manager';
+import { getSellMetadataApiToken } from '@naosan/e-auth-manager';
 const token = await getSellMetadataApiToken();
 // Example endpoint:
 // GET https://api.example.com/v1/resource
@@ -219,7 +219,7 @@ See `examples/sell-metadata-item-conditions.js` for a runnable script.
 For promotions, ad campaigns, and merchandising workflows:
 
 ```javascript
-import { getMarketingApiToken } from '@naosan/e-auth-multi-token-manager';
+import { getMarketingApiToken } from '@naosan/e-auth-manager';
 
 const token = await getMarketingApiToken('your_app_id', {
   readOnly: false,    // Set true for sell.marketing.readonly scope
@@ -659,7 +659,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 For issues and questions:
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-multi-token-manager/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-manager/issues)
 - Developer Support: Contact your platform's support for API-specific questions
 - **Security Issues**: Please report privately to maintain security
 
