@@ -1,5 +1,6 @@
 // Configuration management for eBay OAuth Token Manager
 import dotenv from 'dotenv';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import os from 'os';
@@ -18,17 +19,38 @@ dotenv.config({ path: path.join(__dirname, '..', '.env'), override: false });
  * @returns {Object} Configuration object
  */
 export function loadConfig(options = {}) {
-  const clientId = options.clientId ||
-    process.env.EAUTH_EBAY_CLIENT_ID ||
-    process.env.EAUTH_CLIENT_ID ||
-    process.env.EBAY_CLIENT_ID ||
-    process.env.EBAY_API_APP_NAME;
+  const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
 
-  const clientSecret = options.clientSecret ||
-    process.env.EAUTH_EBAY_CLIENT_SECRET ||
-    process.env.EAUTH_CLIENT_SECRET ||
-    process.env.EBAY_CLIENT_SECRET ||
-    process.env.EBAY_API_CERT_NAME;
+  // Optional config file (supports multiple values in one place)
+  const configPath = pick(options.configPath, process.env.EAUTH_CONFIG, process.env.EAUTH_CONFIG_FILE);
+  let fileConfig = {};
+  if (configPath) {
+    try {
+      const resolved = path.resolve(configPath);
+      const raw = fs.readFileSync(resolved, 'utf8');
+      fileConfig = JSON.parse(raw) || {};
+    } catch (error) {
+      console.warn(`⚠️ Could not load config file at ${configPath}: ${error.message}`);
+    }
+  }
+
+  const clientId = pick(
+    options.clientId,
+    fileConfig.clientId,
+    process.env.EAUTH_EBAY_CLIENT_ID,
+    process.env.EAUTH_CLIENT_ID,
+    process.env.EBAY_CLIENT_ID,
+    process.env.EBAY_API_APP_NAME
+  );
+
+  const clientSecret = pick(
+    options.clientSecret,
+    fileConfig.clientSecret,
+    process.env.EAUTH_EBAY_CLIENT_SECRET,
+    process.env.EAUTH_CLIENT_SECRET,
+    process.env.EBAY_CLIENT_SECRET,
+    process.env.EBAY_API_CERT_NAME
+  );
 
   if (!clientId || !clientSecret) {
     const missing = [];
@@ -41,9 +63,12 @@ export function loadConfig(options = {}) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}\nPlease set these variables or pass them as options.`);
   }
 
-  const providedMasterKey = options.masterKey ||
+  const providedMasterKey = pick(
+    options.masterKey,
+    fileConfig.masterKey,
     process.env.EAUTH_MASTER_KEY ||
-    process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+    process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
+  );
 
   const config = {
     // eBay API Credentials (REQUIRED)
@@ -51,35 +76,35 @@ export function loadConfig(options = {}) {
     clientSecret,
 
     // Optional configuration
-    defaultAppId: options.defaultAppId || process.env.EAUTH_DEFAULT_APP_ID || process.env.EBAY_DEFAULT_APP_ID || clientId,
-    environment: options.environment || process.env.EAUTH_ENVIRONMENT || process.env.EBAY_ENVIRONMENT || 'PRODUCTION',
+    defaultAppId: pick(options.defaultAppId, fileConfig.defaultAppId, process.env.EAUTH_DEFAULT_APP_ID, process.env.EBAY_DEFAULT_APP_ID, clientId),
+    environment: pick(options.environment, fileConfig.environment, process.env.EAUTH_ENVIRONMENT, process.env.EBAY_ENVIRONMENT, 'PRODUCTION'),
     
     // Database configuration
-    databasePath: options.databasePath || process.env.EAUTH_DATABASE_PATH || process.env.EBAY_DATABASE_PATH || './database/ebay_tokens.sqlite',
+    databasePath: pick(options.databasePath, fileConfig.databasePath, process.env.EAUTH_DATABASE_PATH, process.env.EBAY_DATABASE_PATH, './database/ebay_tokens.sqlite'),
     
     // File-based token storage configuration
-    tokenFilePath: options.tokenFilePath || process.env.EAUTH_TOKEN_FILE_PATH || process.env.EBAY_TOKEN_FILE_PATH,
+    tokenFilePath: pick(options.tokenFilePath, fileConfig.tokenFilePath, process.env.EAUTH_TOKEN_FILE_PATH, process.env.EBAY_TOKEN_FILE_PATH),
 
     // Encryption configuration
     encryptionEnabled: options.encryptionEnabled ?? true,
-    masterKey: options.masterKey || process.env.EAUTH_MASTER_KEY || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY || os.hostname(),
+    masterKey: pick(options.masterKey, fileConfig.masterKey, process.env.EAUTH_MASTER_KEY, process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY, os.hostname()),
     customMasterKeyProvided: Boolean(providedMasterKey),
 
     // API URLs (usually don't need to change)
     tokenUrl: options.tokenUrl || (
-      (options.environment || process.env.EAUTH_ENVIRONMENT || process.env.EBAY_ENVIRONMENT || 'PRODUCTION')
+      (options.environment || fileConfig.environment || process.env.EAUTH_ENVIRONMENT || process.env.EBAY_ENVIRONMENT || 'PRODUCTION')
         .toUpperCase() === 'SANDBOX'
-        ? process.env.EAUTH_TOKEN_URL || process.env.EBAY_TOKEN_URL || 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
-        : process.env.EAUTH_TOKEN_URL || process.env.EBAY_TOKEN_URL || 'https://api.ebay.com/identity/v1/oauth2/token'
+        ? pick(fileConfig.tokenUrl, process.env.EAUTH_TOKEN_URL, process.env.EBAY_TOKEN_URL, 'https://api.sandbox.ebay.com/identity/v1/oauth2/token')
+        : pick(fileConfig.tokenUrl, process.env.EAUTH_TOKEN_URL, process.env.EBAY_TOKEN_URL, 'https://api.ebay.com/identity/v1/oauth2/token')
     ),
-    scope: options.scope || process.env.EAUTH_SCOPE || process.env.EBAY_SCOPE || 'https://api.ebay.com/oauth/api_scope',
+    scope: pick(options.scope, fileConfig.scope, process.env.EAUTH_SCOPE, process.env.EBAY_SCOPE, 'https://api.ebay.com/oauth/api_scope'),
     
     // Initial Refresh Token for first-time setup
-    initialRefreshToken: options.initialRefreshToken || process.env.EAUTH_INITIAL_REFRESH_TOKEN || process.env.EBAY_INITIAL_REFRESH_TOKEN,
+    initialRefreshToken: pick(options.initialRefreshToken, fileConfig.initialRefreshToken, process.env.EAUTH_INITIAL_REFRESH_TOKEN, process.env.EBAY_INITIAL_REFRESH_TOKEN),
     
     // Centralized JSON (SSOT) configuration
-    ssotJsonPath: options.ssotJsonPath || process.env.EAUTH_SSOT_JSON || process.env.OAUTH_SSOT_JSON,
-    tokenNamespace: options.tokenNamespace || process.env.EAUTH_TOKEN_NAMESPACE || process.env.TOKEN_NAMESPACE || 'ebay-oauth'
+    ssotJsonPath: pick(options.ssotJsonPath, fileConfig.ssotJsonPath, process.env.EAUTH_SSOT_JSON, process.env.OAUTH_SSOT_JSON),
+    tokenNamespace: pick(options.tokenNamespace, fileConfig.tokenNamespace, process.env.EAUTH_TOKEN_NAMESPACE, process.env.TOKEN_NAMESPACE, 'ebay-oauth')
   };
 
   return config;
