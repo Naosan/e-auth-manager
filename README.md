@@ -1,6 +1,6 @@
-# e-auth-manager
+# e-auth-multi-token-manager
 
-**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features (provider-agnostic)**
+**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features (provider-agnostic, multi-account)**
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
