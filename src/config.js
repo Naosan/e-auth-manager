@@ -1,4 +1,4 @@
-// Configuration management for eBay OAuth Token Manager
+// Configuration management for e-auth-multi-token-manager
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -9,19 +9,18 @@ import os from 'os';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env from consumer project (cwd) first, then fall back to package root without overriding.
+// Load .env from consumer project first, then fall back to package root without overriding
 dotenv.config();
 dotenv.config({ path: path.join(__dirname, '..', '.env'), override: false });
 
 /**
- * Load configuration from environment variables and config files
+ * Load configuration from environment variables and optional JSON config file
  * @param {Object} options - Override options
  * @returns {Object} Configuration object
  */
 export function loadConfig(options = {}) {
   const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
 
-  // Optional config file (supports multiple values in one place)
   const configPath = pick(options.configPath, process.env.EAUTH_CONFIG, process.env.EAUTH_CONFIG_FILE);
   let fileConfig = {};
   if (configPath) {
@@ -66,18 +65,23 @@ export function loadConfig(options = {}) {
   const providedMasterKey = pick(
     options.masterKey,
     fileConfig.masterKey,
-    process.env.EAUTH_MASTER_KEY ||
+    process.env.EAUTH_MASTER_KEY,
     process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
   );
 
   const config = {
-    // eBay API Credentials (REQUIRED)
+    // API Credentials (REQUIRED)
     clientId,
     clientSecret,
 
     // Optional configuration
     defaultAppId: pick(options.defaultAppId, fileConfig.defaultAppId, process.env.EAUTH_DEFAULT_APP_ID, process.env.EBAY_DEFAULT_APP_ID, clientId),
     environment: pick(options.environment, fileConfig.environment, process.env.EAUTH_ENVIRONMENT, process.env.EBAY_ENVIRONMENT, 'PRODUCTION'),
+    accounts: Array.isArray(options.accounts)
+      ? options.accounts
+      : Array.isArray(fileConfig.accounts)
+        ? fileConfig.accounts
+        : [],
     
     // Database configuration
     databasePath: pick(options.databasePath, fileConfig.databasePath, process.env.EAUTH_DATABASE_PATH, process.env.EBAY_DATABASE_PATH, './database/ebay_tokens.sqlite'),
