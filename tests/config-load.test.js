@@ -50,6 +50,35 @@ describe('loadConfig env aliases and defaultAppId', () => {
     expect(config.defaultAppId).toBe('eauth-default');
   });
 
+  test('loads accounts from EAUTH_CONFIG file', async () => {
+    process.env.EAUTH_CLIENT_ID = '';
+    process.env.EAUTH_CLIENT_SECRET = '';
+    process.env.EAUTH_EBAY_CLIENT_ID = '';
+    process.env.EAUTH_EBAY_CLIENT_SECRET = '';
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const tmp = path.join(process.cwd(), `tmp-config-${Date.now()}.json`);
+    fs.writeFileSync(tmp, JSON.stringify({
+      clientId: 'cfg-id',
+      clientSecret: 'cfg-secret',
+      defaultAppId: 'cfg-app',
+      accounts: [{ accountName: 'acc1', appId: 'app1' }]
+    }));
+
+    process.env.EAUTH_CONFIG = tmp;
+
+    const { loadConfig } = await import(`../src/config.js?ts=${Date.now()}`);
+    const config = loadConfig();
+
+    expect(config.clientId).toBe('cfg-id');
+    expect(config.clientSecret).toBe('cfg-secret');
+    expect(config.defaultAppId).toBe('cfg-app');
+    expect(config.accounts).toEqual([{ accountName: 'acc1', appId: 'app1' }]);
+
+    fs.unlinkSync(tmp);
+  });
+
   test('falls back to EBAY_API_* aliases and EBAY_DEFAULT_APP_ID when EBAY_CLIENT_ID/SECRET are absent', async () => {
     process.env.EAUTH_CLIENT_ID = '';
     process.env.EAUTH_CLIENT_SECRET = '';
