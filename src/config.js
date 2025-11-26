@@ -19,11 +19,13 @@ dotenv.config({ path: path.join(__dirname, '..', '.env'), override: false });
  */
 export function loadConfig(options = {}) {
   const clientId = options.clientId ||
+    process.env.EAUTH_EBAY_CLIENT_ID ||
     process.env.EAUTH_CLIENT_ID ||
     process.env.EBAY_CLIENT_ID ||
     process.env.EBAY_API_APP_NAME;
 
   const clientSecret = options.clientSecret ||
+    process.env.EAUTH_EBAY_CLIENT_SECRET ||
     process.env.EAUTH_CLIENT_SECRET ||
     process.env.EBAY_CLIENT_SECRET ||
     process.env.EBAY_API_CERT_NAME;
