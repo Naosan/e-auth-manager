@@ -69,7 +69,8 @@ Use the appropriate token type based on the API family and whether user consent 
 ### Environment Setup
 
 1. Copy `.env.example` to `.env` in your app project root and fill in your credentials. The library loads `.env` from the current working directory first, then falls back to the package root without overriding already-set values. Prefer `EAUTH_*` names; `EBAY_*` and `EBAY_API_*` are accepted for compatibility.
-2. Start with the minimal variables below, then opt into advanced options as your deployment requires.
+2. (Optional, recommended for multi-account setups) Provide a JSON config file and point `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to it; it can hold clientId/secret, masterKey, paths, and more. Env vars override the config file.
+3. Start with the minimal variables below, then opt into advanced options as your deployment requires.
 
 | Type | Keys | Notes |
 | --- | --- | --- |
@@ -78,6 +79,7 @@ Use the appropriate token type based on the API family and whether user consent 
 | **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
 | **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
+| **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, etc. Env vars still override it. |
 
 If you don't provide a master key, the library automatically falls back to the current
 machine's hostname. Tokens encrypted with the default key can be decrypted across

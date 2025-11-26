@@ -5,6 +5,33 @@ describe('loadConfig env aliases and defaultAppId', () => {
     process.env = { ...originalEnv };
   });
 
+  test('loads from EAUTH_CONFIG file', async () => {
+    process.env.EAUTH_CLIENT_ID = '';
+    process.env.EAUTH_CLIENT_SECRET = '';
+    process.env.EAUTH_EBAY_CLIENT_ID = '';
+    process.env.EAUTH_EBAY_CLIENT_SECRET = '';
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const tmp = path.join(process.cwd(), `tmp-config-${Date.now()}.json`);
+    fs.writeFileSync(tmp, JSON.stringify({
+      clientId: 'cfg-id',
+      clientSecret: 'cfg-secret',
+      defaultAppId: 'cfg-app'
+    }));
+
+    process.env.EAUTH_CONFIG = tmp;
+
+    const { loadConfig } = await import(`../src/config.js?ts=${Date.now()}`);
+    const config = loadConfig();
+
+    expect(config.clientId).toBe('cfg-id');
+    expect(config.clientSecret).toBe('cfg-secret');
+    expect(config.defaultAppId).toBe('cfg-app');
+
+    fs.unlinkSync(tmp);
+  });
+
   test('prefers EAUTH_* over EBAY_*', async () => {
     process.env.EAUTH_EBAY_CLIENT_ID = '';
     process.env.EAUTH_EBAY_CLIENT_SECRET = '';
