@@ -57,6 +57,7 @@ const marketingToken = await getMarketingApiToken();
 - There is **no** default `../database/ebay_tokens.json`; if you see that path in logs or docs, it is not used by this package.
 - JSON files that happen to be in the repo/workspace (e.g., under `database/`) are **not** read unless you explicitly point `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH` to them.
 - This package is intended for a **single account**. `account_name` is always `default`; `EBAY_ACCOUNT_NAME` is ignored unless you override code/examples yourself.
+- SQLite uses rollback-journal by default (no `-wal/-shm` files). Opt-in to WAL with `EAUTH_SQLITE_WAL=1` if you need it.
 
 ### Choosing the Right Token
 
