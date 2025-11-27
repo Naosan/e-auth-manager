@@ -31,7 +31,7 @@ This library provides robust OAuth 2.0 token management for modern REST APIs wit
 npm install @naosan/e-auth-manager
 ```
 
-### Basic Usage
+### Basic Usage (single-account)
 
 ```javascript
 import {
@@ -41,21 +41,22 @@ import {
 } from '@naosan/e-auth-manager';
 
 // User-scoped APIs (User Access Tokens)
-const tradingToken = await getTradingApiToken('your-app-id');
+const tradingToken = await getTradingApiToken();   // defaults to the single configured account
 
 // Public APIs (Application Access Tokens)
 const browseToken = await getBrowseApiToken();
 
 // Marketing-like APIs (User Access Tokens)
-const marketingToken = await getMarketingApiToken('your-app-id');
+const marketingToken = await getMarketingApiToken();
 ```
 
-### Storage defaults (important)
+### Storage defaults (important, single-account)
 
 - Primary storage: SQLite `./database/ebay_tokens.sqlite` (override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
 - Secondary (cache/backup): encrypted JSON at the OS-specific default (Linux: `~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json`). Override with `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH`.
 - There is **no** default `../database/ebay_tokens.json`; if you see that path in logs or docs, it is not used by this package.
 - JSON files that happen to be in the repo/workspace (e.g., under `database/`) are **not** read unless you explicitly point `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH` to them.
+- This package is intended for a **single account**. `account_name` is always `default`; `EBAY_ACCOUNT_NAME` is ignored unless you override code/examples yourself.
 
 ### Choosing the Right Token
 
@@ -76,14 +77,14 @@ Use the appropriate token type based on the API family and whether user consent 
 ### Environment Setup
 
 1. Copy `.env.example` to `.env` in your app project root and fill in your credentials. The library loads `.env` from the current working directory first, then falls back to the package root without overriding already-set values. Prefer `EAUTH_*` names; `EBAY_*` and `EBAY_API_*` are accepted for compatibility.
-2. (Optional, recommended for multi-account setups) Provide a JSON config file and point `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to it; it can hold clientId/secret, masterKey, paths, and more. Env vars override the config file.
+2. (Optional) Provide a JSON config file and point `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to it; it can hold clientId/secret, masterKey, paths, and more. Env vars override the config file.
 3. Start with the minimal variables below, then opt into advanced options as your deployment requires.
 
 | Type | Keys | Notes |
 | --- | --- | --- |
 | **Required** | `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_API_APP_NAME`, `EBAY_API_CERT_NAME`) | Needed for every token request. |
 | **Security (optional)** | `EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
-| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
+| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds the single `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
 | **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 | **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, etc. Env vars still override it. |
@@ -105,12 +106,13 @@ EAUTH_MASTER_KEY=generate_a_secure_key
 # EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
-> **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
+> **Note:** This package is single-account. `EBAY_INITIAL_REFRESH_TOKEN` seeds only the `default` account/App ID combination.
 
 ### Common pitfalls when using from another repo
 
 - Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs.
 - `appId` / `defaultAppId` must match the `app_id` stored in the DB, otherwise it is treated as missing.
+- Single-account only: all operations target the `default` account; `EBAY_ACCOUNT_NAME` and multi-account seeds are not supported here.
 - If you share encrypted JSON across hosts, set both `EBAY_TOKEN_FILE_PATH` and `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`; otherwise the JSON may not decrypt and will be ignored.
 - Ensure write permission to the DB file and the token file path; permission errors cause silent fallback.
 - Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN`) when the DB is empty.
@@ -297,7 +299,6 @@ When you receive a new refresh token (for example, after rotating credentials), 
    EBAY_CLIENT_ID=your_production_client_id
    EBAY_CLIENT_SECRET=your_production_client_secret
    EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
-   EBAY_ACCOUNT_NAME=tokyo-1uppers
    # Optional: SSOT location
    # For multi-instance sync, set an explicit path. The repository no longer tracks
    # config/refresh-ssot.json (gitignored). Point to a secure location instead:
@@ -307,12 +308,10 @@ When you receive a new refresh token (for example, after rotating credentials), 
    ```bash
    node examples/update-ssot-refresh-token.js "v=1.abcdefg"
    ```
-   You can also pass flags for custom setups:
+   You can also pass flags for custom paths:
    ```bash
    node examples/update-ssot-refresh-token.js \
      --refresh-token "v=1.abcdefg" \
-     --account tokyo-1uppers \
-     --app-id YourAppID \
      --ssot /secure/shared/refresh-ssot.json
    ```
 
@@ -337,12 +336,10 @@ Need to initialize both the SQLite database and the encrypted JSON cache (dual s
    ```bash
    node examples/seed-dual-storage-refresh-token.js "v=1.abcdefg"
    ```
-   Or pass explicit flags when you have multiple accounts or non-default paths:
+   Or pass explicit flags when you have non-default paths:
    ```bash
    node examples/seed-dual-storage-refresh-token.js \
      --refresh-token "v=1.abcdefg" \
-     --account tokyo-1uppers \
-     --app-id YourAppID \
      --database ./database/ebay_tokens.sqlite \
      --tokens ./config/ebay-tokens.encrypted.json
    ```
