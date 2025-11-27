@@ -50,6 +50,13 @@ const browseToken = await getBrowseApiToken();
 const marketingToken = await getMarketingApiToken('your-app-id');
 ```
 
+### Storage defaults (important)
+
+- Primary storage: SQLite `./database/ebay_tokens.sqlite` (override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
+- Secondary (cache/backup): encrypted JSON at the OS-specific default (Linux: `~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json`). Override with `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH`.
+- There is **no** default `../database/ebay_tokens.json`; if you see that path in logs or docs, it is not used by this package.
+- JSON files that happen to be in the repo/workspace (e.g., under `database/`) are **not** read unless you explicitly point `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH` to them.
+
 ### Choosing the Right Token
 
 Use the appropriate token type based on the API family and whether user consent is required:
@@ -99,6 +106,40 @@ EAUTH_MASTER_KEY=generate_a_secure_key
 ```
 
 > **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
+
+### Common pitfalls when using from another repo
+
+- Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs.
+- `appId` / `defaultAppId` must match the `app_id` stored in the DB, otherwise it is treated as missing.
+- If you share encrypted JSON across hosts, set both `EBAY_TOKEN_FILE_PATH` and `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`; otherwise the JSON may not decrypt and will be ignored.
+- Ensure write permission to the DB file and the token file path; permission errors cause silent fallback.
+- Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN`) when the DB is empty.
+- Confirm `EAUTH_ENVIRONMENT` / `EBAY_ENVIRONMENT` (PRODUCTION vs SANDBOX) matches your keys.
+
+### Database schema
+
+SQLite DB is created automatically (WAL mode). Main table and metadata:
+
+- `ebay_oauth_tokens`
+  - `id INTEGER PRIMARY KEY AUTOINCREMENT`
+  - `name TEXT NOT NULL DEFAULT 'oauth'`
+  - `account_name TEXT NOT NULL UNIQUE`
+  - `app_id TEXT`
+  - `access_token TEXT NOT NULL`
+  - `refresh_token TEXT NOT NULL`
+  - `access_token_updated_date TEXT NOT NULL`
+  - `expires_in INTEGER NOT NULL`
+  - `refresh_token_updated_date TEXT NOT NULL`
+  - `refresh_token_expires_in INTEGER NOT NULL DEFAULT 47304000`
+  - `token_type TEXT DEFAULT 'Bearer'`
+  - `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - Index: `idx_ebay_oauth_tokens_app_id (app_id)`
+
+- `oauth_metadata`
+  - `key TEXT PRIMARY KEY`
+  - `value TEXT`
+  - `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
 
 ### Bulk seeding refresh tokens
 
