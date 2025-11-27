@@ -8,6 +8,9 @@
 tokens/
 *.encrypted.json
 database/
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
 examples/**/ebay_tokens.sqlite
 examples/**/ebay_tokens.sqlite-wal
 examples/**/ebay_tokens.sqlite-shm
@@ -20,9 +23,12 @@ config/tokenManagerConfig.js
 .npmrc
 
 # Local databases and logs (noise + may contain data)
-*.sqlite
 *.db
 *.log
+
+# Ignore all Markdown except README.md and *.txt-allowed equivalents
+**/*.md
+!README.md
 
 # Temporary directories
 tmp/
