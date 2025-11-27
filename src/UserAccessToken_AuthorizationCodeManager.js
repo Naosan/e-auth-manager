@@ -175,9 +175,11 @@ class UserAccessToken_AuthorizationCodeManager {
         driver: sqlite3.Database
       });
       
-      // Enable foreign keys and WAL mode for better performance
+      // Enable foreign keys; WAL is optional (disabled by default to avoid -wal/-shm artifacts)
       await this.db.exec('PRAGMA foreign_keys = ON');
-      await this.db.exec('PRAGMA journal_mode = WAL');
+      if (process.env.EAUTH_SQLITE_WAL === '1') {
+        await this.db.exec('PRAGMA journal_mode = WAL');
+      }
       
       // Create table if it doesn't exist
       await this.initializeDatabase(this.db);
