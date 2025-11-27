@@ -4,10 +4,14 @@
 .env.production
 .env.staging
 
-# Token storage - Never commit actual tokens
+# Token storage - Never commit actual tokens (examples included)
 tokens/
 *.encrypted.json
 database/
+examples/**/ebay_tokens.sqlite
+examples/**/ebay_tokens.sqlite-wal
+examples/**/ebay_tokens.sqlite-shm
+examples/**/ebay-tokens.encrypted.json
 config/refresh-ssot.json
 config/refresh-ssot.json.locks/
 
