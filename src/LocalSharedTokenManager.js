@@ -279,19 +279,8 @@ class LocalSharedTokenManager {
 
   deriveEncryptionKey() {
     try {
-      const masterKey = this.masterKey;
-      // Cross-platform machine identifier
-      let machineId;
-      
-      if (process.platform === 'win32') {
-        machineId = process.env.COMPUTERNAME || process.env.USERDOMAIN || 'windows-machine';
-      } else {
-        // For Unix-like systems (Linux, macOS)
-        machineId = process.env.HOSTNAME || process.env.USER || 'unix-machine';
-      }
-      
       return crypto.scryptSync(
-        masterKey + machineId,
+        this.masterKey,
         'ebay-research-salt-v1',
         32
       );
