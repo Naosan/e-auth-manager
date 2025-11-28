@@ -1,6 +1,6 @@
-# e-auth-multi-token-manager
+# e-auth-manager
 
-**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features (provider-agnostic, multi-account)**
+**A comprehensive Node.js library for managing OAuth 2.0 tokens with enterprise-grade features (provider-agnostic)**
 [![Node.js Compatible](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -17,7 +17,7 @@ This library provides robust OAuth 2.0 token management for modern REST APIs wit
 - **Zero Configuration**: Works out-of-the-box with automatic dual storage
 - **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
 - **Production Ready**: Battle-tested multi-layer caching and error recovery
-- **Enterprise Security**: AES-256 encryption with machine-specific keys (GCM for DB/SSOT, CBC for local file)
+- **Enterprise Security**: AES-256 encryption with a master key (default: hostname; set `EAUTH_MASTER_KEY` to share across hosts)
 - **Multi-Instance Coordination**: SSOT (Single Source of Truth) prevents token conflicts
 - **API-Specific Optimization**: Dedicated managers for Trading API vs Browse API
 
@@ -28,27 +28,36 @@ This library provides robust OAuth 2.0 token management for modern REST APIs wit
 ### Installation
 
 ```bash
-npm install @naosan/e-auth-multi-token-manager
+npm install @naosan/e-auth-manager
 ```
 
-### Basic Usage
+### Basic Usage (single-account)
 
 ```javascript
 import {
   getTradingApiToken,
   getBrowseApiToken,
   getMarketingApiToken
-} from '@naosan/e-auth-multi-token-manager';
+} from '@naosan/e-auth-manager';
 
 // User-scoped APIs (User Access Tokens)
-const tradingToken = await getTradingApiToken('your-app-id');
+const tradingToken = await getTradingApiToken();   // defaults to the single configured account
 
 // Public APIs (Application Access Tokens)
 const browseToken = await getBrowseApiToken();
 
 // Marketing-like APIs (User Access Tokens)
-const marketingToken = await getMarketingApiToken('your-app-id');
+const marketingToken = await getMarketingApiToken();
 ```
+
+### Storage defaults (important, single-account)
+
+- Primary storage: SQLite `./database/ebay_tokens.sqlite` (override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
+- Secondary (cache/backup): encrypted JSON at the OS-specific default (Linux: `~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json`). Override with `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH`.
+- There is **no** default `../database/ebay_tokens.json`; if you see that path in logs or docs, it is not used by this package.
+- JSON files that happen to be in the repo/workspace (e.g., under `database/`) are **not** read unless you explicitly point `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH` to them.
+- This package is intended for a **single account**. `account_name` is always `default`; `EBAY_ACCOUNT_NAME` is ignored unless you override code/examples yourself.
+- SQLite uses rollback-journal by default (no `-wal/-shm` files). Opt-in to WAL with `EAUTH_SQLITE_WAL=1` if you need it.
 
 ### Choosing the Right Token
 
@@ -69,17 +78,17 @@ Use the appropriate token type based on the API family and whether user consent 
 ### Environment Setup
 
 1. Copy `.env.example` to `.env` in your app project root and fill in your credentials. The library loads `.env` from the current working directory first, then falls back to the package root without overriding already-set values. Prefer `EAUTH_*` names; `EBAY_*` and `EBAY_API_*` are accepted for compatibility.
-2. (Optional, recommended for multi-account setups) Provide a JSON config file and set `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to its path; it can hold clientId/secret, masterKey, paths, and `accounts` entries. Env vars override the file.
+2. (Optional) Provide a JSON config file and point `EAUTH_CONFIG` (or `EAUTH_CONFIG_FILE`) to it; it can hold clientId/secret, masterKey, paths, and more. Env vars override the config file.
 3. Start with the minimal variables below, then opt into advanced options as your deployment requires.
 
 | Type | Keys | Notes |
 | --- | --- | --- |
 | **Required** | `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_API_APP_NAME`, `EBAY_API_CERT_NAME`) | Needed for every token request. |
 | **Security (optional)** | `EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
-| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds only the `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
+| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds the single `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
 | **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
-| **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, and `accounts` list. Env vars still override it. |
+| **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, etc. Env vars still override it. |
 
 If you don't provide a master key, the library automatically falls back to the current
 machine's hostname. Tokens encrypted with the default key can be decrypted across
@@ -98,7 +107,42 @@ EAUTH_MASTER_KEY=generate_a_secure_key
 # EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
-> **Note:** `EBAY_INITIAL_REFRESH_TOKEN` does **not** update every account automatically. It seeds only the default account/App ID combination. Use the helper script or call `setRefreshToken` for any additional pairs.
+> **Note:** This package is single-account. `EBAY_INITIAL_REFRESH_TOKEN` seeds only the `default` account/App ID combination.
+
+### Common pitfalls when using from another repo
+
+- Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs.
+- `appId` / `defaultAppId` must match the `app_id` stored in the DB, otherwise it is treated as missing.
+- Single-account only: all operations target the `default` account; `EBAY_ACCOUNT_NAME` and multi-account seeds are not supported here.
+- If you share encrypted JSON across hosts, set both `EBAY_TOKEN_FILE_PATH` and `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`; otherwise the JSON may not decrypt and will be ignored.
+- Ensure write permission to the DB file and the token file path; permission errors cause silent fallback.
+- Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN`) when the DB is empty.
+- Confirm `EAUTH_ENVIRONMENT` / `EBAY_ENVIRONMENT` (PRODUCTION vs SANDBOX) matches your keys.
+
+### Database schema
+
+SQLite DB is created automatically (WAL mode). Main table and metadata:
+
+- `ebay_oauth_tokens`
+  - `id INTEGER PRIMARY KEY AUTOINCREMENT`
+  - `name TEXT NOT NULL DEFAULT 'oauth'`
+  - `account_name TEXT NOT NULL UNIQUE`
+  - `app_id TEXT`
+  - `access_token TEXT NOT NULL`
+  - `refresh_token TEXT NOT NULL`
+  - `access_token_updated_date TEXT NOT NULL`
+  - `expires_in INTEGER NOT NULL`
+  - `refresh_token_updated_date TEXT NOT NULL`
+  - `refresh_token_expires_in INTEGER NOT NULL DEFAULT 47304000`
+  - `token_type TEXT DEFAULT 'Bearer'`
+  - `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - Index: `idx_ebay_oauth_tokens_app_id (app_id)`
+
+- `oauth_metadata`
+  - `key TEXT PRIMARY KEY`
+  - `value TEXT`
+  - `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
 
 ### Bulk seeding refresh tokens
 
@@ -140,7 +184,7 @@ The library implements a sophisticated 5-layer retrieval system:
 For private operations requiring user authorization:
 
 ```javascript
-import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-multi-token-manager';
+import { UserAccessToken_AuthorizationCodeManager } from '@naosan/e-auth-manager';
 
 const manager = new UserAccessToken_AuthorizationCodeManager({
   clientId: 'your_client_id',
@@ -163,7 +207,7 @@ const accountName = await manager.getUserAccountName('your_app_id');
 #### Refresh token health checks
 
 ```javascript
-import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan/e-auth-multi-token-manager';
+import { checkRefreshTokenValidity, getRefreshTokenHealth } from '@naosan/e-auth-manager';
 
 const isHealthy = await checkRefreshTokenValidity('your_app_id');
 const health = await getRefreshTokenHealth('your_app_id');
@@ -190,7 +234,7 @@ console.log(health);
 For public data access:
 
 ```javascript
-import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/e-auth-multi-token-manager';
+import { ApplicationAccessToken_ClientCredentialsManager } from '@naosan/e-auth-manager';
 
 const manager = new ApplicationAccessToken_ClientCredentialsManager({
   clientId: 'your_client_id',
@@ -206,7 +250,7 @@ const token = await manager.getApplicationAccessToken();
 For marketplace/category metadata like conditionId/conditionName:
 
 ```javascript
-import { getSellMetadataApiToken } from '@naosan/e-auth-multi-token-manager';
+import { getSellMetadataApiToken } from '@naosan/e-auth-manager';
 const token = await getSellMetadataApiToken();
 // Example endpoint:
 // GET https://api.example.com/v1/resource
@@ -219,7 +263,7 @@ See `examples/sell-metadata-item-conditions.js` for a runnable script.
 For promotions, ad campaigns, and merchandising workflows:
 
 ```javascript
-import { getMarketingApiToken } from '@naosan/e-auth-multi-token-manager';
+import { getMarketingApiToken } from '@naosan/e-auth-manager';
 
 const token = await getMarketingApiToken('your_app_id', {
   readOnly: false,    // Set true for sell.marketing.readonly scope
@@ -256,7 +300,6 @@ When you receive a new refresh token (for example, after rotating credentials), 
    EBAY_CLIENT_ID=your_production_client_id
    EBAY_CLIENT_SECRET=your_production_client_secret
    EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
-   EBAY_ACCOUNT_NAME=tokyo-1uppers
    # Optional: SSOT location
    # For multi-instance sync, set an explicit path. The repository no longer tracks
    # config/refresh-ssot.json (gitignored). Point to a secure location instead:
@@ -266,12 +309,10 @@ When you receive a new refresh token (for example, after rotating credentials), 
    ```bash
    node examples/update-ssot-refresh-token.js "v=1.abcdefg"
    ```
-   You can also pass flags for custom setups:
+   You can also pass flags for custom paths:
    ```bash
    node examples/update-ssot-refresh-token.js \
      --refresh-token "v=1.abcdefg" \
-     --account tokyo-1uppers \
-     --app-id YourAppID \
      --ssot /secure/shared/refresh-ssot.json
    ```
 
@@ -296,12 +337,10 @@ Need to initialize both the SQLite database and the encrypted JSON cache (dual s
    ```bash
    node examples/seed-dual-storage-refresh-token.js "v=1.abcdefg"
    ```
-   Or pass explicit flags when you have multiple accounts or non-default paths:
+   Or pass explicit flags when you have non-default paths:
    ```bash
    node examples/seed-dual-storage-refresh-token.js \
      --refresh-token "v=1.abcdefg" \
-     --account tokyo-1uppers \
-     --app-id YourAppID \
      --database ./database/ebay_tokens.sqlite \
      --tokens ./config/ebay-tokens.encrypted.json
    ```
@@ -334,7 +373,7 @@ Default locations (auto-created):
 **Contains**:
 - Complete token data (access + refresh tokens)
 - Expiration information and timestamps
-- AES-256-CBC encryption with machine-specific keys
+- AES-256-CBC encryption with the configured master key (default: hostname; set `EAUTH_MASTER_KEY` to share across hosts)
 
 #### 3. SSOT Provider (Multi-Instance Coordination)
 **Location**: Configurable via `ssotJsonPath` option
@@ -393,7 +432,7 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 - **Local JSON cache**: AES-256-CBC (compatible and efficient for file payloads)
 - **SSOT (central JSON)**: AES-256-GCM with AAD
 
-All modes use machine-specific keys by default and unique initialization vectors per encryption.
+All modes use the configured master key (default: hostname) and unique initialization vectors per encryption. Set `EAUTH_MASTER_KEY` to a shared secret to decrypt across hosts/containers.
 
 ### Secure Key Management
 
@@ -659,7 +698,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 For issues and questions:
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-multi-token-manager/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Naosan/e-auth-manager/issues)
 - Developer Support: Contact your platform's support for API-specific questions
 - **Security Issues**: Please report privately to maintain security
 
