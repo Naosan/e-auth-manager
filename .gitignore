@@ -4,10 +4,17 @@
 .env.production
 .env.staging
 
-# Token storage - Never commit actual tokens
+# Token storage - Never commit actual tokens (examples included)
 tokens/
 *.encrypted.json
 database/
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+examples/**/ebay_tokens.sqlite
+examples/**/ebay_tokens.sqlite-wal
+examples/**/ebay_tokens.sqlite-shm
+examples/**/ebay-tokens.encrypted.json
 config/refresh-ssot.json
 config/refresh-ssot.json.locks/
 
@@ -16,9 +23,12 @@ config/tokenManagerConfig.js
 .npmrc
 
 # Local databases and logs (noise + may contain data)
-*.sqlite
 *.db
 *.log
+
+# Ignore all Markdown except README.md and *.txt-allowed equivalents
+**/*.md
+!README.md
 
 # Temporary directories
 tmp/
