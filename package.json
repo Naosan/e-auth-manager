@@ -1,6 +1,6 @@
 {
   "name": "@naosan/e-auth-manager",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Minimal OAuth 2.0 token management utilities for Node.js",
   "main": "src/index.js",
   "type": "module",

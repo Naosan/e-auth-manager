@@ -17,8 +17,8 @@ function prepare() {
   if (!exists(README_NPM)) return; // nothing to do
   if (exists(MARKER)) return; // already swapped
   if (!exists(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
-  if (exists(README)) fs.renameSync(README, README_REPO);
-  fs.copyFileSync(README_NPM, README);
+  if (exists(README)) fs.copyFileSync(README, README_REPO); // keep original without cross-device rename
+  fs.copyFileSync(README_NPM, README); // overwrite with npm version
   fs.writeFileSync(MARKER, 'ok');
 }
 
@@ -26,8 +26,8 @@ function restore() {
   if (!exists(MARKER)) return;
   if (exists(README_REPO)) {
     // restore original README
-    if (exists(README)) fs.unlinkSync(README);
-    fs.renameSync(README_REPO, README);
+    fs.copyFileSync(README_REPO, README);
+    try { fs.unlinkSync(README_REPO); } catch {}
   }
   try { fs.unlinkSync(MARKER); } catch {}
   try { fs.rmdirSync(BACKUP_DIR); } catch {}
