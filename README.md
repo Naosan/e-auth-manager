@@ -17,7 +17,7 @@ This library provides robust OAuth 2.0 token management for modern REST APIs wit
 - **Zero Configuration**: Works out-of-the-box with automatic dual storage
 - **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
 - **Production Ready**: Battle-tested multi-layer caching and error recovery
-- **Enterprise Security**: AES-256 encryption with machine-specific keys (GCM for DB/SSOT, CBC for local file)
+- **Enterprise Security**: AES-256 encryption with a master key (default: hostname; set `EAUTH_MASTER_KEY` to share across hosts)
 - **Multi-Instance Coordination**: SSOT (Single Source of Truth) prevents token conflicts
 - **API-Specific Optimization**: Dedicated managers for Trading API vs Browse API
 
@@ -373,7 +373,7 @@ Default locations (auto-created):
 **Contains**:
 - Complete token data (access + refresh tokens)
 - Expiration information and timestamps
-- AES-256-CBC encryption with machine-specific keys
+- AES-256-CBC encryption with the configured master key (default: hostname; set `EAUTH_MASTER_KEY` to share across hosts)
 
 #### 3. SSOT Provider (Multi-Instance Coordination)
 **Location**: Configurable via `ssotJsonPath` option
@@ -432,7 +432,7 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 - **Local JSON cache**: AES-256-CBC (compatible and efficient for file payloads)
 - **SSOT (central JSON)**: AES-256-GCM with AAD
 
-All modes use machine-specific keys by default and unique initialization vectors per encryption.
+All modes use the configured master key (default: hostname) and unique initialization vectors per encryption. Set `EAUTH_MASTER_KEY` to a shared secret to decrypt across hosts/containers.
 
 ### Secure Key Management
 

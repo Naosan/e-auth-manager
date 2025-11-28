@@ -875,11 +875,8 @@ class UserAccessToken_AuthorizationCodeManager {
    */
   deriveEncryptionKey() {
     try {
-      const masterKey = this.masterKey;
-      const machineId = process.env.COMPUTERNAME || process.env.HOSTNAME || 'default-machine';
-      
       return crypto.scryptSync(
-        masterKey + machineId,
+        this.masterKey,
         'ebay-database-tokens-salt-v1',
         32
       );
