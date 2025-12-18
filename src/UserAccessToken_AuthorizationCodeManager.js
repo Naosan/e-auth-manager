@@ -622,9 +622,9 @@ class UserAccessToken_AuthorizationCodeManager {
   /**
    * Refresh access token by App ID (preferred method)
    */
-  async renewUserAccessTokenByAppId(appId, tokenData, options = {}) {
-    try {
-      console.log(`🔄 Refreshing access token for App ID: ${appId}`);
+	  async renewUserAccessTokenByAppId(appId, tokenData, options = {}) {
+	    try {
+	      console.log(`🔄 Refreshing access token for App ID: ${appId}`);
 
       // 1) Get latest refresh token from centralized provider (SSOT) if available
       let rtRecord = null;
@@ -657,37 +657,49 @@ class UserAccessToken_AuthorizationCodeManager {
         );
       };
 
-      let data;
-      if (this.tokenProvider) {
-        // Use centralized provider with distributed locking
-        data = await this.tokenProvider.withLock(appId, async () => {
-          const latest = await this.tokenProvider.get(appId);
-          const rtToUse = latest?.refreshToken || refreshToken;
-          const res = await doRefresh(rtToUse);
-          const body = res.data;
-          
-          // eBay returns new refresh_token only sometimes - increment version when it does
-          const newRT = body.refresh_token || rtToUse;
-          const newVersion = (latest?.version ?? rtRecord?.version ?? 0) + (body.refresh_token ? 1 : 0);
-          await this.tokenProvider.set(appId, newRT, newVersion);
-          return body;
-        });
-      } else {
-        // Legacy mode - direct refresh without provider
-        data = (await doRefresh(refreshToken)).data;
-      }
+	      let data;
+	      let refreshTokenUsed = refreshToken;
+	      let refreshTokenRotated = false;
+	      if (this.tokenProvider) {
+	        // Use centralized provider with distributed locking
+	        const result = await this.tokenProvider.withLock(appId, async () => {
+	          const latest = await this.tokenProvider.get(appId);
+	          const rtToUse = latest?.refreshToken || refreshToken;
+	          const res = await doRefresh(rtToUse);
+	          const body = res.data;
+	          
+	          // Only treat refresh_token as rotated when it actually changes (some providers may echo the same token)
+	          const rotated = Boolean(body.refresh_token) && body.refresh_token !== rtToUse;
+	          const newRT = body.refresh_token || rtToUse;
+	          const newVersion = (latest?.version ?? rtRecord?.version ?? 0) + (rotated ? 1 : 0);
+	          
+	          // Avoid touching SSOT timestamps unless refresh token actually changed (or record is missing)
+	          if (rotated || !latest) {
+	            await this.tokenProvider.set(appId, newRT, newVersion);
+	          }
 
-      // Update token data in database by account name (since saveUserAccessToken uses account_name)
-      await this.saveUserAccessToken(tokenData.account_name, {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || refreshToken,
-        accessTokenUpdatedDate: now,
-        refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
-        expiresIn: data.expires_in,
-        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
-        tokenType: data.token_type || 'Bearer',
-        appId: appId
-      });
+	          return { body, rtToUse, rotated };
+	        });
+	        data = result.body;
+	        refreshTokenUsed = result.rtToUse;
+	        refreshTokenRotated = result.rotated;
+	      } else {
+	        // Legacy mode - direct refresh without provider
+	        data = (await doRefresh(refreshToken)).data;
+	        refreshTokenRotated = Boolean(data.refresh_token) && data.refresh_token !== refreshTokenUsed;
+	      }
+
+	      // Update token data in database by account name (since saveUserAccessToken uses account_name)
+	      await this.saveUserAccessToken(tokenData.account_name, {
+	        accessToken: data.access_token,
+	        refreshToken: data.refresh_token || refreshTokenUsed,
+	        accessTokenUpdatedDate: now,
+	        refreshTokenUpdatedDate: refreshTokenRotated ? now : tokenData.refresh_token_updated_date,
+	        expiresIn: data.expires_in,
+	        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+	        tokenType: data.token_type || 'Bearer',
+	        appId: appId
+	      });
 
       console.log(`✅ Access token refreshed successfully for App ID ${appId} (${tokenData.account_name})`);
       
@@ -736,22 +748,25 @@ class UserAccessToken_AuthorizationCodeManager {
             const data = response.data;
             const now = new Date().toISOString();
             
-            // Update centralized provider
-            const newRT = data.refresh_token || latest.refreshToken;
-            const newVersion = (latest.version ?? 0) + (data.refresh_token ? 1 : 0);
-            await this.tokenProvider.set(appId, newRT, newVersion);
+	            // Update centralized provider only when refresh token actually rotates
+	            const rotated = Boolean(data.refresh_token) && data.refresh_token !== latest.refreshToken;
+	            const newRT = data.refresh_token || latest.refreshToken;
+	            const newVersion = (latest.version ?? 0) + (rotated ? 1 : 0);
+	            if (rotated) {
+	              await this.tokenProvider.set(appId, newRT, newVersion);
+	            }
 
-            // Update local database
-            await this.saveUserAccessToken(tokenData.account_name, {
-              accessToken: data.access_token,
-              refreshToken: newRT,
-              accessTokenUpdatedDate: now,
-              refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
-              expiresIn: data.expires_in,
-              refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
-              tokenType: data.token_type || 'Bearer',
-              appId: appId
-            });
+	            // Update local database
+	            await this.saveUserAccessToken(tokenData.account_name, {
+	              accessToken: data.access_token,
+	              refreshToken: newRT,
+	              accessTokenUpdatedDate: now,
+	              refreshTokenUpdatedDate: rotated ? now : tokenData.refresh_token_updated_date,
+	              expiresIn: data.expires_in,
+	              refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+	              tokenType: data.token_type || 'Bearer',
+	              appId: appId
+	            });
 
             console.log(`✅ Successfully recovered from invalid_grant for App ID ${appId}`);
             this.updateMemoryCache(`token_appid_${appId}`, data.access_token, data.expires_in);
@@ -774,9 +789,9 @@ class UserAccessToken_AuthorizationCodeManager {
   /**
    * Refresh access token using refresh token (legacy compatibility)
    */
-  async renewUserAccessToken(accountName, tokenData, options = {}) {
-    try {
-      console.log(`🔄 Refreshing access token for account: ${accountName}`);
+	  async renewUserAccessToken(accountName, tokenData, options = {}) {
+	    try {
+	      console.log(`🔄 Refreshing access token for account: ${accountName}`);
 
       // Decrypt refresh token
       const refreshToken = this.decryptToken(tokenData.refresh_token);
@@ -803,18 +818,19 @@ class UserAccessToken_AuthorizationCodeManager {
         }
       );
 
-      const data = response.data;
+	      const data = response.data;
+	      const refreshTokenRotated = Boolean(data.refresh_token) && data.refresh_token !== refreshToken;
 
-      // Update token data in database
-      await this.saveUserAccessToken(accountName, {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || refreshToken, // Use new refresh token if provided
-        accessTokenUpdatedDate: now,
-        refreshTokenUpdatedDate: data.refresh_token ? now : tokenData.refresh_token_updated_date,
-        expiresIn: data.expires_in,
-        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
-        tokenType: data.token_type || 'Bearer'
-      });
+	      // Update token data in database
+	      await this.saveUserAccessToken(accountName, {
+	        accessToken: data.access_token,
+	        refreshToken: data.refresh_token || refreshToken, // Use new refresh token if provided
+	        accessTokenUpdatedDate: now,
+	        refreshTokenUpdatedDate: refreshTokenRotated ? now : tokenData.refresh_token_updated_date,
+	        expiresIn: data.expires_in,
+	        refreshTokenExpiresIn: tokenData.refresh_token_expires_in,
+	        tokenType: data.token_type || 'Bearer'
+	      });
 
       console.log(`✅ Access token refreshed successfully for ${accountName}`);
       
