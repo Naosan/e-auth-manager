@@ -52,11 +52,11 @@ const marketingToken = await getMarketingApiToken();
 
 ### Storage defaults (important, single-account)
 
-- Primary storage: SQLite `./database/ebay_tokens.sqlite` (override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
+- Primary storage: SQLite `./database/ebay_tokens.sqlite` (relative to current working directory; override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
 - Secondary (cache/backup): encrypted JSON at the OS-specific default (Linux: `~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json`). Override with `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH`.
 - There is **no** default `../database/ebay_tokens.json`; if you see that path in logs or docs, it is not used by this package.
 - JSON files that happen to be in the repo/workspace (e.g., under `database/`) are **not** read unless you explicitly point `EBAY_TOKEN_FILE_PATH` / `EAUTH_TOKEN_FILE_PATH` to them.
-- This package is intended for a **single account**. `account_name` is always `default`; `EBAY_ACCOUNT_NAME` is ignored unless you override code/examples yourself.
+- This package is intended for a **single account** by default. Set `EAUTH_ACCOUNT_NAME` (alias: `EBAY_ACCOUNT_NAME`) to change the default `account_name` used for initial seeding and legacy account-name APIs.
 - SQLite uses rollback-journal by default (no `-wal/-shm` files). Opt-in to WAL with `EAUTH_SQLITE_WAL=1` if you need it.
 
 ### Choosing the Right Token
@@ -107,13 +107,13 @@ EAUTH_MASTER_KEY=generate_a_secure_key
 # EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
 ```
 
-> **Note:** This package is single-account. `EBAY_INITIAL_REFRESH_TOKEN` seeds only the `default` account/App ID combination.
+> **Note:** Seeding is single-account. `EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN` seeds only the configured default account name (`EAUTH_ACCOUNT_NAME` / `EBAY_ACCOUNT_NAME`, default: `default`) and `defaultAppId`.
 
 ### Common pitfalls when using from another repo
 
-- Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs.
+- Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs. If multiple apps/services should share the same tokens, point them all at the same absolute DB path.
 - `appId` / `defaultAppId` must match the `app_id` stored in the DB, otherwise it is treated as missing.
-- Single-account only: all operations target the `default` account; `EBAY_ACCOUNT_NAME` and multi-account seeds are not supported here.
+- Single-account by default: all operations target the configured default account name (`EAUTH_ACCOUNT_NAME` / `EBAY_ACCOUNT_NAME`, default: `default`).
 - If you share encrypted JSON across hosts, set both `EBAY_TOKEN_FILE_PATH` and `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`; otherwise the JSON may not decrypt and will be ignored.
 - Ensure write permission to the DB file and the token file path; permission errors cause silent fallback.
 - Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN`) when the DB is empty.
@@ -357,6 +357,13 @@ The library automatically creates storage directories and manages token persiste
 
 #### 1. SQLite Database (Primary Storage)
 **Location**: `./database/ebay_tokens.sqlite` (configurable)
+**Recommended (production / multi-repo)**: use an absolute path in an OS “app data” directory so `e-auth-manager` can share tokens safely across apps/services without CWD surprises:
+
+- Linux: `~/.local/share/e-auth-manager/ebay_tokens.sqlite` (or `$XDG_DATA_HOME/e-auth-manager/ebay_tokens.sqlite`)
+- macOS: `~/Library/Application Support/e-auth-manager/ebay_tokens.sqlite`
+- Windows: `%LOCALAPPDATA%\\e-auth-manager\\ebay_tokens.sqlite` (fallback: `%APPDATA%`)
+- Server/service installs: `/var/lib/e-auth-manager/ebay_tokens.sqlite` (or another locked-down directory you manage)
+
 **Contains**:
 - `access_token` - Encrypted access tokens (AES-256-GCM)
 - `refresh_token` - Encrypted refresh tokens (AES-256-GCM) 

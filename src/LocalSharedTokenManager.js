@@ -11,7 +11,8 @@ class LocalSharedTokenManager {
     this.lockFile = `${this.tokenFile}.lock`;
 
     // Encryption configuration (fall back to per-machine default)
-    this.masterKey = options.masterKey || os.hostname();
+    const envMasterKey = process.env.EAUTH_MASTER_KEY || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+    this.masterKey = options.masterKey || envMasterKey || os.hostname();
     this.encryptionKey = this.deriveEncryptionKey();
   }
 

@@ -77,6 +77,15 @@ export function loadConfig(options = {}) {
 
     // Optional configuration
     defaultAppId: pick(options.defaultAppId, fileConfig.defaultAppId, process.env.EAUTH_DEFAULT_APP_ID, process.env.EBAY_DEFAULT_APP_ID, clientId),
+    defaultAccountName: pick(
+      options.defaultAccountName,
+      options.accountName,
+      fileConfig.defaultAccountName,
+      fileConfig.accountName,
+      process.env.EAUTH_ACCOUNT_NAME,
+      process.env.EBAY_ACCOUNT_NAME,
+      'default'
+    ),
     environment: pick(options.environment, fileConfig.environment, process.env.EAUTH_ENVIRONMENT, process.env.EBAY_ENVIRONMENT, 'PRODUCTION'),
     
     // Database configuration

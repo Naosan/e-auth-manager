@@ -7,6 +7,7 @@ import { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType }
 
 // Load configuration
 const config = loadConfig();
+const defaultAccountName = config.defaultAccountName || 'default';
 
 // Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
 const defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
@@ -322,14 +323,14 @@ export const getUserAccessTokenByAppId = (appId) => {
  * @param {string} [accountName] - Account name
  * @returns {Promise<string>} - User Access token
  */
-export const getUserAccessToken = (accountName = 'default') => {
+export const getUserAccessToken = (accountName = defaultAccountName) => {
   // Always use database-based manager with automatic dual storage
   // Try Default App ID first if no specific account name provided
-  if (accountName === 'default') {
+  if (accountName === defaultAccountName) {
     const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
     if (appId) {
       return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
-        return defaultTokenManager.getUserAccessToken('default');
+        return defaultTokenManager.getUserAccessToken(defaultAccountName);
       });
     }
   }
@@ -402,7 +403,7 @@ export const getValidAccessToken = () => {
   if (appId) {
     return defaultTokenManager.getUserAccessTokenByAppId(appId);
   }
-  return defaultTokenManager.getUserAccessToken('default');
+  return defaultTokenManager.getUserAccessToken(defaultAccountName);
 };
 
 // ========================================
@@ -459,4 +460,3 @@ export const getUserAccountName = (appId) => {
 export const getTokenInfo = getUserTokenInfo;
 export const getTokenExpiration = getUserTokenExpiration;
 export const getAccountName = getUserAccountName;
-

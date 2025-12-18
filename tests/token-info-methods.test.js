@@ -20,8 +20,8 @@ const mockTokenData = {
   token_type: 'Bearer'
 };
 
-const mockDecryptedAccessToken = 'v^1.1#i^1#p^3#r^1#I^3#f^0#t^H4s...';
-const mockDecryptedRefreshToken = 'v^1.1#i^1#r^1#p^3#I^3#f^0#t^Ul1...';
+const mockDecryptedAccessToken = 'mock-access-token';
+const mockDecryptedRefreshToken = 'mock-refresh-token';
 
 describe('Token Information Methods', () => {
   let tokenManager;

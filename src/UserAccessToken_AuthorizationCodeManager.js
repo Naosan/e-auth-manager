@@ -26,11 +26,16 @@ class UserAccessToken_AuthorizationCodeManager {
     this.clientSecret = options.clientSecret;
     this.tokenUrl = options.tokenUrl || 'https://api.ebay.com/identity/v1/oauth2/token';
     this.encryptionEnabled = options.encryptionEnabled ?? true;
-    this.customMasterKeyProvided = options.customMasterKeyProvided ?? Boolean(options.masterKey);
-    this.masterKey = options.masterKey || os.hostname();
+    const envMasterKey = process.env.EAUTH_MASTER_KEY || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+    this.customMasterKeyProvided = options.customMasterKeyProvided ?? Boolean(options.masterKey || envMasterKey);
+    this.masterKey = options.masterKey || envMasterKey || os.hostname();
 
     // Default App ID for database searches (prioritized over clientId)
     this.defaultAppId = options.defaultAppId || this.clientId;
+
+    // Default account name (used for initial seeding + legacy accountName APIs)
+    const envAccountName = process.env.EAUTH_ACCOUNT_NAME || process.env.EBAY_ACCOUNT_NAME;
+    this.defaultAccountName = options.defaultAccountName || options.accountName || envAccountName || 'default';
 
     // Initial Refresh Token for first-time setup
     this.initialRefreshToken = options.initialRefreshToken;
@@ -99,7 +104,7 @@ class UserAccessToken_AuthorizationCodeManager {
    * @param {string} accountName - Account name to associate with the token (default: 'default')
    * @param {string} appId - App ID to associate with the token (default: this.defaultAppId)
    */
-  async setRefreshToken(refreshToken, accountName = 'default', appId = null) {
+  async setRefreshToken(refreshToken, accountName = this.defaultAccountName, appId = null) {
     try {
       console.log(`🔑 Setting initial refresh token for account: ${accountName}`);
       
@@ -145,7 +150,7 @@ class UserAccessToken_AuthorizationCodeManager {
       }
       
       console.log('🚀 Auto-initializing refresh token from environment...');
-      await this.setRefreshToken(this.initialRefreshToken, 'default', this.defaultAppId);
+      await this.setRefreshToken(this.initialRefreshToken, this.defaultAccountName, this.defaultAppId);
       
     } catch (error) {
       console.error('🚨 Failed to auto-initialize refresh token:', error.message);
@@ -385,7 +390,7 @@ class UserAccessToken_AuthorizationCodeManager {
         // Fallback: Try to get by default account name if App ID matches
         if (appId === this.clientId) {
           console.log('🔄 App ID matches client ID, trying default account fallback...');
-          return await this.getUserAccessToken('default');
+          return await this.getUserAccessToken(this.defaultAccountName);
         }
         throw new Error(`No token found for App ID: ${appId}`);
       }
@@ -415,10 +420,10 @@ class UserAccessToken_AuthorizationCodeManager {
   /**
    * Get valid access token (App ID優先、account nameはフォールバック)
    */
-  async getUserAccessToken(accountName = 'default') {
+  async getUserAccessToken(accountName = this.defaultAccountName) {
     try {
       // If account name is 'default', try Default App ID first
-      if (accountName === 'default' && this.defaultAppId) {
+      if (accountName === this.defaultAccountName && this.defaultAppId) {
         try {
           return await this.getUserAccessTokenByAppId(this.defaultAppId);
         } catch (error) {
@@ -501,7 +506,7 @@ class UserAccessToken_AuthorizationCodeManager {
     const db = await this.getDb();
     
     // If accountName is 'default', try Default App ID first
-    if (accountName === 'default' && this.defaultAppId) {
+    if (accountName === this.defaultAccountName && this.defaultAppId) {
       try {
         const tokenByAppId = await this.getTokenByAppId(this.defaultAppId);
         if (tokenByAppId) {
@@ -976,7 +981,7 @@ class UserAccessToken_AuthorizationCodeManager {
 
       // Fallback to default account name
       if (!tokenData) {
-        tokenData = await this.getTokenFromDatabase('default');
+        tokenData = await this.getTokenFromDatabase(this.defaultAccountName);
       }
 
       if (!tokenData) {

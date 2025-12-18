@@ -20,7 +20,7 @@ config/refresh-ssot.json.locks/
 
 # Local secret settings - Never commit local credentials
 config/tokenManagerConfig.js
-.npmrc
+.npmrc*
 
 # Local databases and logs (noise + may contain data)
 *.db
