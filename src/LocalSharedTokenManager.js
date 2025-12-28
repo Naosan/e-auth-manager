@@ -173,6 +173,9 @@ class LocalSharedTokenManager {
     const retryDelay = 100;
     const staleLockTimeout = 5 * 60 * 1000; // 5 minutes
 
+    // Ensure parent directory exists before attempting to create a lock file.
+    await fs.mkdir(path.dirname(this.lockFile), { recursive: true });
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         // Check for stale lock before attempting to acquire a new one
