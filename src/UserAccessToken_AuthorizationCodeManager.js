@@ -39,9 +39,11 @@ class UserAccessToken_AuthorizationCodeManager {
 
     // Initial Refresh Token for first-time setup
     this.initialRefreshToken = options.initialRefreshToken;
+    this.initialRefreshTokenMode = options.initialRefreshTokenMode;
 
     // Database connection (lazy initialization)
     this.db = null;
+    this._dbInitPromise = null;
 
     // In-memory cache for performance
     this.memoryCache = new Map();
@@ -50,6 +52,12 @@ class UserAccessToken_AuthorizationCodeManager {
     // Track reset operations to avoid recursive purges
     this._isResettingTokens = false;
     this._skipNextResetDueToFingerprint = false;
+    this.allowTokenPurgeOnKeyChange =
+      options.allowTokenPurgeOnKeyChange ??
+      (
+        ['1', 'true', 'yes', 'on'].includes(String(process.env.EAUTH_PURGE_ON_KEY_CHANGE || '').toLowerCase()) ||
+        ['1', 'true', 'yes', 'on'].includes(String(process.env.EAUTH_ALLOW_TOKEN_PURGE_ON_KEY_CHANGE || '').toLowerCase())
+      );
     
     // Encryption key for token storage
     if (this.encryptionEnabled) {
@@ -93,9 +101,7 @@ class UserAccessToken_AuthorizationCodeManager {
     }
     
     // Auto-initialize refresh token if provided
-    if (this.initialRefreshToken) {
-      this.initializeRefreshToken();
-    }
+    this.ready = this.initialRefreshToken ? this.initializeRefreshToken() : Promise.resolve();
   }
 
   /**
@@ -114,6 +120,21 @@ class UserAccessToken_AuthorizationCodeManager {
 
       const now = new Date().toISOString();
       const actualAppId = appId || this.defaultAppId;
+
+      // Idempotency: avoid bumping metadata when the same refresh token is already stored.
+      try {
+        const db = await this.getDb();
+        const existingRow = await this.getMostRecentTokenRow(db, actualAppId, accountName);
+        if (existingRow) {
+          const existingRefreshToken = this.decryptToken(existingRow.refresh_token);
+          if (existingRefreshToken === refreshToken) {
+            console.log(`ℹ️ Refresh token is already stored for ${accountName} (App ID: ${actualAppId}); skipping`);
+            return;
+          }
+        }
+      } catch (precheckError) {
+        // Fall through to writing the token (best-effort idempotency check).
+      }
       
       // Create minimal token data with expired access token to force immediate refresh
       const tokenData = {
@@ -149,7 +170,72 @@ class UserAccessToken_AuthorizationCodeManager {
         return;
       }
       
-      console.log('🚀 Auto-initializing refresh token from environment...');
+      const mode = (this.initialRefreshTokenMode || process.env.EAUTH_INITIAL_REFRESH_TOKEN_MODE || 'auto')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+      if (mode === 'never' || mode === 'off' || mode === 'disabled' || mode === '0') {
+        console.log('ℹ️ Initial refresh token auto-seeding is disabled (mode=never)');
+        return;
+      }
+
+      const normalizedMode = (() => {
+        if (mode === 'always' || mode === 'force') {
+          return 'always';
+        }
+        if (mode === 'sync' || mode === 'replace-if-different' || mode === 'replace_if_different' || mode === 'if_different') {
+          return 'sync';
+        }
+        if (mode === 'if_missing' || mode === 'missing' || mode === 'seed-if-missing' || mode === 'seed_if_missing') {
+          return 'if_missing';
+        }
+        if (mode === 'if_expired' || mode === 'expired' || mode === 'seed-if-expired' || mode === 'seed_if_expired') {
+          return 'if_expired';
+        }
+        return 'auto';
+      })();
+
+      console.log(`🚀 Auto-initializing refresh token from environment (mode=${normalizedMode})...`);
+
+      if (normalizedMode !== 'always') {
+        const db = await this.getDb();
+        const existingRow = await this.getMostRecentTokenRow(db, this.defaultAppId, this.defaultAccountName);
+        const hasToken = Boolean(existingRow);
+        const isExpired = existingRow ? this.isRefreshTokenExpired(existingRow) : true;
+
+        if (normalizedMode === 'if_missing') {
+          if (hasToken) {
+            console.log('ℹ️ Token already exists in database; skipping auto-seed (mode=if_missing)');
+            return;
+          }
+        } else if (normalizedMode === 'if_expired') {
+          if (!hasToken) {
+            console.log('ℹ️ No token exists in database; skipping auto-seed (mode=if_expired)');
+            return;
+          }
+          if (!isExpired) {
+            console.log('ℹ️ Refresh token is not expired; skipping auto-seed (mode=if_expired)');
+            return;
+          }
+        } else if (normalizedMode === 'auto') {
+          // Safe default for "token left in .env": only seed when storage is empty or the stored token is expired.
+          if (hasToken && !isExpired) {
+            console.log('ℹ️ Refresh token exists and is not expired; skipping auto-seed (mode=auto)');
+            return;
+          }
+        } else if (normalizedMode === 'sync') {
+          // Explicit mode: keep DB aligned with env (SSOT-like), including overwrite on differences.
+          if (existingRow) {
+            const existingRefreshToken = this.decryptToken(existingRow.refresh_token);
+            if (existingRefreshToken === this.initialRefreshToken) {
+              console.log('ℹ️ Initial refresh token matches stored token; skipping auto-seed (mode=sync)');
+              return;
+            }
+          }
+        }
+      }
+
       await this.setRefreshToken(this.initialRefreshToken, this.defaultAccountName, this.defaultAppId);
       
     } catch (error) {
@@ -166,30 +252,83 @@ class UserAccessToken_AuthorizationCodeManager {
     }
   }
 
+  async getMostRecentTokenRow(db, appId, accountName) {
+    if (!db) {
+      throw new Error('Database connection is not initialized');
+    }
+
+    if (appId) {
+      const byApp = await db.get(`
+        SELECT * FROM ebay_oauth_tokens
+        WHERE app_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [appId]);
+      if (byApp) {
+        return byApp;
+      }
+    }
+
+    if (accountName) {
+      return await db.get(`
+        SELECT * FROM ebay_oauth_tokens
+        WHERE account_name = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [accountName]);
+    }
+
+    return null;
+  }
+
   /**
    * Get database connection (lazy initialization)
    */
   async getDb() {
-    if (!this.db) {
-      // Ensure database directory exists
-      const dbDir = path.dirname(this.dbPath);
-      await import('fs/promises').then(fs => fs.mkdir(dbDir, { recursive: true }));
-      
-      this.db = await open({
-        filename: this.dbPath,
-        driver: sqlite3.Database
-      });
-      
-      // Enable foreign keys; WAL is optional (disabled by default to avoid -wal/-shm artifacts)
-      await this.db.exec('PRAGMA foreign_keys = ON');
-      if (process.env.EAUTH_SQLITE_WAL === '1') {
-        await this.db.exec('PRAGMA journal_mode = WAL');
-      }
-      
-      // Create table if it doesn't exist
-      await this.initializeDatabase(this.db);
+    if (this.db) {
+      return this.db;
     }
-    return this.db;
+
+    if (!this._dbInitPromise) {
+      this._dbInitPromise = (async () => {
+        const dbDir = path.dirname(this.dbPath);
+        await import('fs/promises').then(fs => fs.mkdir(dbDir, { recursive: true }));
+
+        const db = await open({
+          filename: this.dbPath,
+          driver: sqlite3.Database
+        });
+
+        try {
+          await db.exec('PRAGMA foreign_keys = ON');
+          if (process.env.EAUTH_SQLITE_WAL === '1') {
+            await db.exec('PRAGMA journal_mode = WAL');
+          }
+
+          await this.initializeDatabase(db);
+          this.db = db;
+          return db;
+        } catch (error) {
+          try {
+            await db.close();
+          } catch {
+            // ignore close errors
+          }
+          throw error;
+        }
+      })();
+    }
+
+    try {
+      return await this._dbInitPromise;
+    } finally {
+      if (this.db) {
+        this._dbInitPromise = null;
+      } else if (this._dbInitPromise) {
+        // If initialization failed, clear the promise so callers can retry.
+        this._dbInitPromise = null;
+      }
+    }
   }
 
   /**
@@ -253,10 +392,20 @@ class UserAccessToken_AuthorizationCodeManager {
     }
 
     if (existing.value !== fingerprint) {
-      console.warn('⚠️ Encryption key fingerprint changed. Purging stored tokens...');
-      await this.resetAllTokens({ db, skipFingerprintUpdate: true, force: true });
-      this._skipNextResetDueToFingerprint = true;
-      await this.storeEncryptionFingerprint(db, fingerprint);
+      if (this.allowTokenPurgeOnKeyChange) {
+        console.warn('⚠️ Encryption key fingerprint changed. Purging stored tokens (opt-in enabled)...');
+        await this.resetAllTokens({ db, skipFingerprintUpdate: true, force: true });
+        this._skipNextResetDueToFingerprint = true;
+        await this.storeEncryptionFingerprint(db, fingerprint);
+        return;
+      }
+
+      const error = new Error(
+        'Encryption key fingerprint mismatch detected. Refusing to modify or purge existing tokens.\n' +
+          'Fix EAUTH_MASTER_KEY (or EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY), or set EAUTH_PURGE_ON_KEY_CHANGE=1 to purge tokens explicitly.'
+      );
+      error.code = 'EAUTH_ENCRYPTION_KEY_MISMATCH';
+      throw error;
     }
   }
 
@@ -338,6 +487,7 @@ class UserAccessToken_AuthorizationCodeManager {
    */
   async getUserAccessTokenByAppId(appId) {
     try {
+      await this.ready;
       console.log(`🔍 Checking token for App ID: ${appId}`);
       
       // 1. Check memory cache first (fastest)
@@ -422,6 +572,7 @@ class UserAccessToken_AuthorizationCodeManager {
    */
   async getUserAccessToken(accountName = this.defaultAccountName) {
     try {
+      await this.ready;
       // If account name is 'default', try Default App ID first
       if (accountName === this.defaultAccountName && this.defaultAppId) {
         try {
@@ -482,6 +633,7 @@ class UserAccessToken_AuthorizationCodeManager {
    * Get token data from database by App ID (preferred method)
    */
   async getTokenByAppId(appId) {
+    await this.ready;
     const db = await this.getDb();
     const tokenRow = await db.get(`
       SELECT * FROM ebay_oauth_tokens 
@@ -503,6 +655,7 @@ class UserAccessToken_AuthorizationCodeManager {
    * Get token data from database (App ID優先、account nameはフォールバック)
    */
   async getTokenFromDatabase(accountName) {
+    await this.ready;
     const db = await this.getDb();
     
     // If accountName is 'default', try Default App ID first
@@ -985,6 +1138,7 @@ class UserAccessToken_AuthorizationCodeManager {
    */
   async checkRefreshTokenValidity() {
     try {
+      await this.ready;
       console.log('🔍 Checking refresh token validity...');
       
       // Try to get the most recent token data using Default App ID first

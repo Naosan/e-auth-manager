@@ -110,6 +110,11 @@ export function loadConfig(options = {}) {
     
     // Initial Refresh Token for first-time setup
     initialRefreshToken: pick(options.initialRefreshToken, fileConfig.initialRefreshToken, process.env.EAUTH_INITIAL_REFRESH_TOKEN, process.env.EBAY_INITIAL_REFRESH_TOKEN),
+    initialRefreshTokenMode: pick(
+      options.initialRefreshTokenMode,
+      fileConfig.initialRefreshTokenMode,
+      process.env.EAUTH_INITIAL_REFRESH_TOKEN_MODE
+    ),
     
     // Centralized JSON (SSOT) configuration
     ssotJsonPath: pick(options.ssotJsonPath, fileConfig.ssotJsonPath, process.env.EAUTH_SSOT_JSON, process.env.OAUTH_SSOT_JSON),

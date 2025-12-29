@@ -1,4 +1,4 @@
-// LocalSharedTokenManager.js - File-based eBay Token Management with AES-256-GCM Encryption
+// LocalSharedTokenManager.js - File-based eBay Token Management with AES-256-CBC Encryption
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import path from 'path';
@@ -14,6 +14,18 @@ class LocalSharedTokenManager {
     const envMasterKey = process.env.EAUTH_MASTER_KEY || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
     this.masterKey = options.masterKey || envMasterKey || os.hostname();
     this.encryptionKey = this.deriveEncryptionKey();
+
+    // Recovery behavior when the token file is unreadable (e.g., wrong key / corruption)
+    // - "error" (default): do not modify the file; throw an error
+    // - "backup-and-reset": rename to *.backup.* and return empty storage
+    this.recoveryMode = (options.recoveryMode || process.env.EAUTH_TOKEN_FILE_RECOVERY_MODE || 'error')
+      .toString()
+      .trim()
+      .toLowerCase();
+  }
+
+  computeKeyFingerprint() {
+    return crypto.createHash('sha256').update(this.encryptionKey).digest('hex');
   }
 
   async executeWithLock(fn, operationName = 'operation') {
@@ -80,21 +92,48 @@ class LocalSharedTokenManager {
         console.log('📝 Token file not found, creating new one...');
         return { tokens: {} };
       }
-      
-      // Check if it's a decryption error (wrong key or corrupted file)
-      if (error.message.includes('Unsupported state') || error.message.includes('authenticate data')) {
-        console.warn('⚠️ Decryption failed (possibly different key), creating new token file...');
-        
-        // Backup corrupted file
+
+      const isJsonParseError = error?.name === 'SyntaxError';
+      const message = error?.message || '';
+      const decryptionIndicators = [
+        'Unsupported state',
+        'authenticate data',
+        'bad decrypt',
+        'wrong final block length',
+        'Invalid initialization vector',
+        'Key fingerprint mismatch'
+      ];
+      const isDecryptionError = decryptionIndicators.some(indicator => message.includes(indicator));
+
+      if (isJsonParseError || isDecryptionError) {
+        const reason = isJsonParseError ? 'invalid JSON' : 'decryption failed (wrong key or corrupted file)';
+        const shouldRecover =
+          this.recoveryMode === 'backup-and-reset' ||
+          this.recoveryMode === 'backup_and_reset' ||
+          this.recoveryMode === 'recover' ||
+          this.recoveryMode === 'auto';
+
+        if (!shouldRecover) {
+          const recoveryError = new Error(
+            `Token file read failed (${reason}). Refusing to modify the file in recoveryMode="${this.recoveryMode}".\n` +
+              'Fix EAUTH_MASTER_KEY (or EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY), or set EAUTH_TOKEN_FILE_RECOVERY_MODE=backup-and-reset to auto-backup+reset explicitly.'
+          );
+          recoveryError.code = 'EAUTH_TOKEN_FILE_UNREADABLE';
+          throw recoveryError;
+        }
+
+        console.warn(`⚠️ Token file read failed (${reason}); backing up and resetting (recoveryMode=${this.recoveryMode})...`);
+
         try {
           await fs.rename(this.tokenFile, `${this.tokenFile}.backup.${Date.now()}`);
         } catch (backupError) {
-          console.warn('⚠️ Could not backup corrupted file:', backupError.message);
+          console.warn('⚠️ Could not backup corrupted token file:', backupError.message);
         }
+
         return { tokens: {} };
       }
-      
-      console.error('🚨 Failed to read token file:', error.message);
+
+      console.error('🚨 Failed to read token file:', message);
       throw error;
     }
   }
@@ -134,6 +173,7 @@ class LocalSharedTokenManager {
         version: '1.0',
         encrypted: true,
         algorithm: 'aes-256-cbc',
+        keyFingerprint: this.computeKeyFingerprint(),
         data: encrypted.toString('base64'),
         iv: iv.toString('base64'),
         lastUpdated: new Date().toISOString()
@@ -151,6 +191,13 @@ class LocalSharedTokenManager {
     }
 
     try {
+      if (encryptedData.keyFingerprint) {
+        const expected = this.computeKeyFingerprint();
+        if (encryptedData.keyFingerprint !== expected) {
+          throw new Error('Key fingerprint mismatch (EAUTH_MASTER_KEY may be different)');
+        }
+      }
+
       const iv = Buffer.from(encryptedData.iv, 'base64');
       const encrypted = Buffer.from(encryptedData.data, 'base64');
       
