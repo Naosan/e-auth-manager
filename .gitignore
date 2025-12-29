@@ -35,6 +35,7 @@ tmp/
 temp/
 
 # Development tools and AI assistants - Do not commit to GitHub
+.vscode/
 .claude/
 .serena/
 data/
