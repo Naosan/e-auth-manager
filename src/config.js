@@ -13,6 +13,15 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 dotenv.config({ path: path.join(__dirname, '..', '.env'), override: false });
 
+const warned = new Set();
+const warnOnce = (key, message) => {
+  if (warned.has(key)) {
+    return;
+  }
+  warned.add(key);
+  console.warn(message);
+};
+
 /**
  * Load configuration from environment variables and config files
  * @param {Object} options - Override options
@@ -20,6 +29,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env'), override: false });
  */
 export function loadConfig(options = {}) {
   const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
+  const hasValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
 
   // Optional config file (supports multiple values in one place)
   const configPath = pick(options.configPath, process.env.EAUTH_CONFIG, process.env.EAUTH_CONFIG_FILE);
@@ -32,6 +42,28 @@ export function loadConfig(options = {}) {
     } catch (error) {
       console.warn(`⚠️ Could not load config file at ${configPath}: ${error.message}`);
     }
+  }
+
+  const envEauthInitialRefreshToken = process.env.EAUTH_INITIAL_REFRESH_TOKEN;
+  const envEbayInitialRefreshToken = process.env.EBAY_INITIAL_REFRESH_TOKEN;
+  if (hasValue(envEauthInitialRefreshToken) && hasValue(envEbayInitialRefreshToken) &&
+      String(envEauthInitialRefreshToken).trim() !== String(envEbayInitialRefreshToken).trim()) {
+    warnOnce(
+      'env-mismatch:initial-refresh-token',
+      '⚠️ Both EAUTH_INITIAL_REFRESH_TOKEN and EBAY_INITIAL_REFRESH_TOKEN are set but differ. ' +
+        'This can cause rollback/conflicts across apps or mixed library versions. Prefer EAUTH_INITIAL_REFRESH_TOKEN and remove the EBAY_* alias (or keep them identical during migration).'
+    );
+  }
+
+  const envEauthMasterKey = process.env.EAUTH_MASTER_KEY;
+  const envEbayMasterKey = process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+  if (hasValue(envEauthMasterKey) && hasValue(envEbayMasterKey) &&
+      String(envEauthMasterKey).trim() !== String(envEbayMasterKey).trim()) {
+    warnOnce(
+      'env-mismatch:master-key',
+      '⚠️ Both EAUTH_MASTER_KEY and EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY are set but differ. ' +
+        'This can cause decryption failures (e.g., "bad decrypt") across apps or mixed library versions. Prefer EAUTH_MASTER_KEY and remove the EBAY_* alias (or keep them identical during migration).'
+    );
   }
 
   const clientId = pick(
@@ -66,9 +98,17 @@ export function loadConfig(options = {}) {
   const providedMasterKey = pick(
     options.masterKey,
     fileConfig.masterKey,
-    process.env.EAUTH_MASTER_KEY ||
-    process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
+    envEauthMasterKey,
+    envEbayMasterKey
   );
+
+  if (!hasValue(options.masterKey) && !hasValue(fileConfig.masterKey) &&
+      !hasValue(envEauthMasterKey) && hasValue(envEbayMasterKey)) {
+    warnOnce(
+      'deprecated:EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY',
+      '⚠️ Using deprecated env var EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY. Please migrate to EAUTH_MASTER_KEY.'
+    );
+  }
 
   const config = {
     // eBay API Credentials (REQUIRED)
@@ -109,7 +149,7 @@ export function loadConfig(options = {}) {
     scope: pick(options.scope, fileConfig.scope, process.env.EAUTH_SCOPE, process.env.EBAY_SCOPE, 'https://api.ebay.com/oauth/api_scope'),
     
     // Initial Refresh Token for first-time setup
-    initialRefreshToken: pick(options.initialRefreshToken, fileConfig.initialRefreshToken, process.env.EAUTH_INITIAL_REFRESH_TOKEN, process.env.EBAY_INITIAL_REFRESH_TOKEN),
+    initialRefreshToken: pick(options.initialRefreshToken, fileConfig.initialRefreshToken, envEauthInitialRefreshToken, envEbayInitialRefreshToken),
     initialRefreshTokenMode: pick(
       options.initialRefreshTokenMode,
       fileConfig.initialRefreshTokenMode,
@@ -120,6 +160,14 @@ export function loadConfig(options = {}) {
     ssotJsonPath: pick(options.ssotJsonPath, fileConfig.ssotJsonPath, process.env.EAUTH_SSOT_JSON, process.env.OAUTH_SSOT_JSON),
     tokenNamespace: pick(options.tokenNamespace, fileConfig.tokenNamespace, process.env.EAUTH_TOKEN_NAMESPACE, process.env.TOKEN_NAMESPACE, 'ebay-oauth')
   };
+
+  if (!hasValue(options.initialRefreshToken) && !hasValue(fileConfig.initialRefreshToken) &&
+      !hasValue(envEauthInitialRefreshToken) && hasValue(envEbayInitialRefreshToken) && hasValue(config.initialRefreshToken)) {
+    warnOnce(
+      'deprecated:EBAY_INITIAL_REFRESH_TOKEN',
+      '⚠️ Using deprecated env var EBAY_INITIAL_REFRESH_TOKEN. Please migrate to EAUTH_INITIAL_REFRESH_TOKEN.'
+    );
+  }
 
   return config;
 }

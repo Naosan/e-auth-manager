@@ -67,13 +67,13 @@ Use the appropriate token type based on the API family and whether user consent 
   - When: Public data, no user context
   - APIs: Catalog, Search, and other read-only endpoints
   - How: `getBrowseApiToken()` (app token helper)
-  - Requirements: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (no refresh token needed)
+  - Requirements: `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`; no refresh token needed)
 
 - User Access Token (IAF; Authorization Code)
   - When: User account窶都coped operations that require consent
   - APIs: Trading, Sell Metadata, Marketing (e.g., promotions & campaigns)
   - How: `getTradingApiToken()`, `getSellMetadataApiToken()`, `getMarketingApiToken()`
-  - Requirements: Initial refresh token (via manual OAuth). Seed with `EBAY_INITIAL_REFRESH_TOKEN` or call `setRefreshToken()`
+  - Requirements: Initial refresh token (via manual OAuth). Seed with `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`, deprecated) or call `setRefreshToken()`
 
 ### Environment Setup
 
@@ -84,8 +84,10 @@ Use the appropriate token type based on the API family and whether user consent 
 | Type | Keys | Notes |
 | --- | --- | --- |
 | **Required** | `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_API_APP_NAME`, `EBAY_API_CERT_NAME`) | Needed for every token request. |
-| **Security (optional)** | `EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
-| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (alias: `EBAY_INITIAL_REFRESH_TOKEN`) | Seeds the single `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
+| **Security (optional)** | `EAUTH_MASTER_KEY` (legacy alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`, deprecated) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
+| **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (legacy alias: `EBAY_INITIAL_REFRESH_TOKEN`, deprecated) | Seeds the single `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
+| **Seeding mode** | `EAUTH_INITIAL_REFRESH_TOKEN_MODE` | `auto` (default): seed only on missing/expired. `sync`: overwrite when different (dangerous; use only if env is SSOT). |
+| **Safety toggles** | `EAUTH_PURGE_ON_KEY_CHANGE`, `EAUTH_TOKEN_FILE_RECOVERY_MODE` | Opt-in destructive recovery actions (key mismatch purge, token-file backup/reset). |
 | **Coordination** | `EAUTH_SSOT_JSON` (alias: `OAUTH_SSOT_JSON`), `EAUTH_TOKEN_NAMESPACE` (alias: `TOKEN_NAMESPACE`) | Optional SSOT JSON file that keeps multi-instance deployments in sync. |
 | **Environment** | `EAUTH_ENVIRONMENT` (alias: `EBAY_ENVIRONMENT`) | Choose `PRODUCTION` or `SANDBOX` (defaults to production). |
 | **Config file** | `EAUTH_CONFIG` (alias: `EAUTH_CONFIG_FILE`) | Optional JSON config file with clientId/secret, masterKey, paths, etc. Env vars still override it. |
@@ -94,29 +96,29 @@ If you don't provide a master key, the library automatically falls back to the c
 machine's hostname. Tokens encrypted with the default key can be decrypted across
 restarts on that same host, but they cannot be shared across different machines without
 specifying a custom key. This also applies to SSOT coordination—set
-`EAUTH_MASTER_KEY` (alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`) whenever `EAUTH_SSOT_JSON`
+`EAUTH_MASTER_KEY` (legacy alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`, deprecated) whenever `EAUTH_SSOT_JSON`
 or `OAUTH_SSOT_JSON` is used so every instance can decrypt the shared file.
 
 ```bash
 # Minimal example
-EBAY_CLIENT_ID=your_ebay_client_id
-EBAY_CLIENT_SECRET=your_ebay_client_secret
+EAUTH_CLIENT_ID=your_ebay_client_id
+EAUTH_CLIENT_SECRET=your_ebay_client_secret
 
 # Optional: override the per-machine default encryption key (hostname fallback is automatic)
 EAUTH_MASTER_KEY=generate_a_secure_key
-# EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key
+# EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=generate_a_secure_key  # deprecated
 ```
 
-> **Note:** Seeding is single-account. `EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN` seeds only the configured default account name (`EAUTH_ACCOUNT_NAME` / `EBAY_ACCOUNT_NAME`, default: `default`) and `defaultAppId`.
+> **Note:** Seeding is single-account. `EAUTH_INITIAL_REFRESH_TOKEN` (legacy alias `EBAY_INITIAL_REFRESH_TOKEN` is deprecated) seeds only the configured default account name (`EAUTH_ACCOUNT_NAME` / `EBAY_ACCOUNT_NAME`, default: `default`) and `defaultAppId`.
 
 ### Common pitfalls when using from another repo
 
 - Always set `EBAY_DATABASE_PATH` (or `EAUTH_DATABASE_PATH`) to an **absolute path**; relative paths may point to an empty DB when the working directory differs. If multiple apps/services should share the same tokens, point them all at the same absolute DB path.
 - `appId` / `defaultAppId` must match the `app_id` stored in the DB, otherwise it is treated as missing.
 - Single-account by default: all operations target the configured default account name (`EAUTH_ACCOUNT_NAME` / `EBAY_ACCOUNT_NAME`, default: `default`).
-- If you share encrypted JSON across hosts, set both `EBAY_TOKEN_FILE_PATH` and `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`; otherwise the JSON may not decrypt and will be ignored.
+- If you share encrypted JSON across hosts, set both `EAUTH_TOKEN_FILE_PATH` and `EAUTH_MASTER_KEY` (legacy aliases still work). If the key mismatches, the JSON cache is unreadable and will be ignored (or set `EAUTH_TOKEN_FILE_RECOVERY_MODE=backup-and-reset` to opt into backup+reset).
 - Ensure write permission to the DB file and the token file path; permission errors cause silent fallback.
-- Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN` / `EBAY_INITIAL_REFRESH_TOKEN`) when the DB is empty.
+- Provide an initial refresh token (`EAUTH_INITIAL_REFRESH_TOKEN`; legacy alias `EBAY_INITIAL_REFRESH_TOKEN` is deprecated) when the DB is empty.
 - Confirm `EAUTH_ENVIRONMENT` / `EBAY_ENVIRONMENT` (PRODUCTION vs SANDBOX) matches your keys.
 
 ### Database schema
@@ -297,13 +299,14 @@ When you receive a new refresh token (for example, after rotating credentials), 
 
 1. Confirm your `.env` contains the core production credentials:
    ```env
-   EBAY_CLIENT_ID=your_production_client_id
-   EBAY_CLIENT_SECRET=your_production_client_secret
-   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
+   EAUTH_CLIENT_ID=your_production_client_id
+   EAUTH_CLIENT_SECRET=your_production_client_secret
+   EAUTH_MASTER_KEY=your_shared_master_key
    # Optional: SSOT location
    # For multi-instance sync, set an explicit path. The repository no longer tracks
    # config/refresh-ssot.json (gitignored). Point to a secure location instead:
-   # OAUTH_SSOT_JSON=/secure/shared/refresh-ssot.json
+   # EAUTH_SSOT_JSON=/secure/shared/refresh-ssot.json
+   # OAUTH_SSOT_JSON=/secure/shared/refresh-ssot.json  (legacy alias)
    ```
 2. Execute the updater with the fresh refresh token:
    ```bash
@@ -326,12 +329,12 @@ Need to initialize both the SQLite database and the encrypted JSON cache (dual s
 
 1. Provide your credentials and optional storage overrides via environment variables:
    ```env
-   EBAY_CLIENT_ID=your_production_client_id
-   EBAY_CLIENT_SECRET=your_production_client_secret
-   EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_shared_master_key
+   EAUTH_CLIENT_ID=your_production_client_id
+   EAUTH_CLIENT_SECRET=your_production_client_secret
+   EAUTH_MASTER_KEY=your_shared_master_key
    # Optional: override storage destinations (defaults match the library)
-   # EBAY_DATABASE_PATH=./database/ebay_tokens.sqlite
-   # EBAY_TOKEN_FILE_PATH=./config/ebay-tokens.encrypted.json
+   # EAUTH_DATABASE_PATH=./database/ebay_tokens.sqlite
+   # EAUTH_TOKEN_FILE_PATH=./config/ebay-tokens.encrypted.json
    ```
 2. Run the seeder with the refresh token you received from your provider:
    ```bash
@@ -450,28 +453,33 @@ plan to rotate keys explicitly.
 ```javascript
 // Environment variable (optional, recommended for multi-host setups)
 // Optional override; defaults to hostname-derived key when omitted
-EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_256_bit_secure_key
+EAUTH_MASTER_KEY=your_256_bit_secure_key
+// EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY=your_256_bit_secure_key  // deprecated
 
 // Or via configuration
 const manager = new UserAccessToken_AuthorizationCodeManager({
   // Optional override; leave unset to use the per-machine default key
-  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY
+  masterKey: process.env.EAUTH_MASTER_KEY
 });
 ```
 
-### Encryption Key Fingerprint & Automatic Reset
+### Encryption Key Fingerprint & Key-Change Handling
 
 - The manager stores a SHA-256 fingerprint of the derived encryption key inside the SQLite database (`oauth_metadata` table).
-- On startup the fingerprint is compared to the current key. If they differ, the library automatically:
-  - Deletes every row in `ebay_oauth_tokens`.
-  - Removes the encrypted JSON cache (including `.lock`/backup files).
-  - Logs a warning explaining that tokens were purged because the key changed.
-- After rotating `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`, re-seed refresh tokens (e.g., via `EBAY_INITIAL_REFRESH_TOKEN` or the bulk seeding helper).
-- For manual recovery or during incident response you can trigger the reset yourself:
+- On startup the fingerprint is compared to the current key. If they differ:
+  - Default (safe): throws `EAUTH_ENCRYPTION_KEY_MISMATCH` and does **not** modify or purge existing tokens.
+  - Opt-in (destructive): set `EAUTH_PURGE_ON_KEY_CHANGE=1` to purge tokens and reset caches.
+- After rotating `EAUTH_MASTER_KEY`, re-seed refresh tokens (e.g., via `EAUTH_INITIAL_REFRESH_TOKEN`).
+- For manual recovery or during incident response you can trigger a reset yourself:
 
 ```bash
 node examples/reset-encryption.js
 ```
+
+### Encrypted JSON cache recovery (opt-in)
+
+- If the encrypted JSON cache is unreadable (wrong key / corruption), the library refuses to modify it by default and throws `EAUTH_TOKEN_FILE_UNREADABLE` (callers may still fall back to DB).
+- To auto-backup and reset the file cache explicitly, set `EAUTH_TOKEN_FILE_RECOVERY_MODE=backup-and-reset`.
 
 ### File Permissions
 
@@ -519,7 +527,8 @@ The library automatically uses appropriate API endpoints:
 
 ```bash
 # Via environment
-EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token
+EAUTH_INITIAL_REFRESH_TOKEN=your_refresh_token
+# EBAY_INITIAL_REFRESH_TOKEN=your_refresh_token  # deprecated
 
 # Via API
 await manager.setRefreshToken('your_refresh_token', 'account_name');
@@ -665,7 +674,7 @@ chmod 600 ~/.local/share/ebay-oauth-tokens/ebay-tokens.encrypted.json
 ```javascript
 // Ensure all instances use same masterKey and ssotJsonPath
 const config = {
-  masterKey: process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY,  // Optional override shared across instances
+  masterKey: process.env.EAUTH_MASTER_KEY,  // Optional override shared across instances
   ssotJsonPath: '/shared/tokens.json'      // Shared location
 };
 ```

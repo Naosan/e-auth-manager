@@ -4,6 +4,15 @@ import crypto from 'crypto';
 import path from 'path';
 import os from 'os';
 
+const warned = new Set();
+const warnOnce = (key, message) => {
+  if (warned.has(key)) {
+    return;
+  }
+  warned.add(key);
+  console.warn(message);
+};
+
 class LocalSharedTokenManager {
   constructor(options = {}) {
     // Token file path - configurable with migration support
@@ -11,7 +20,21 @@ class LocalSharedTokenManager {
     this.lockFile = `${this.tokenFile}.lock`;
 
     // Encryption configuration (fall back to per-machine default)
-    const envMasterKey = process.env.EAUTH_MASTER_KEY || process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+    const envEauthMasterKey = process.env.EAUTH_MASTER_KEY;
+    const envEbayMasterKey = process.env.EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY;
+    if (envEauthMasterKey && envEbayMasterKey && String(envEauthMasterKey) !== String(envEbayMasterKey)) {
+      warnOnce(
+        'env-mismatch:master-key',
+        '⚠️ Both EAUTH_MASTER_KEY and EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY are set but differ. Prefer EAUTH_MASTER_KEY and remove the EBAY_* alias (or keep them identical during migration).'
+      );
+    }
+    if (!options.masterKey && !envEauthMasterKey && envEbayMasterKey) {
+      warnOnce(
+        'deprecated:EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY',
+        '⚠️ Using deprecated env var EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY. Please migrate to EAUTH_MASTER_KEY.'
+      );
+    }
+    const envMasterKey = envEauthMasterKey || envEbayMasterKey;
     this.masterKey = options.masterKey || envMasterKey || os.hostname();
     this.encryptionKey = this.deriveEncryptionKey();
 
