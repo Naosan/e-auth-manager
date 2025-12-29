@@ -13,6 +13,14 @@ const warnOnce = (key, message) => {
   console.warn(message);
 };
 
+const TOKEN_FILE_FORMAT_VERSION = '1.1';
+const TOKEN_FILE_KDF_SALT = 'ebay-research-salt-v1';
+const TOKEN_FILE_KDF_VERSIONS = {
+  MASTER_KEY_PLUS_MACHINE_ID: 1,
+  MASTER_KEY_ONLY: 2
+};
+const TOKEN_FILE_MAC_ALGORITHM = 'hmac-sha256';
+
 class LocalSharedTokenManager {
   constructor(options = {}) {
     // Token file path - configurable with migration support
@@ -36,7 +44,9 @@ class LocalSharedTokenManager {
     }
     const envMasterKey = envEauthMasterKey || envEbayMasterKey;
     this.masterKey = options.masterKey || envMasterKey || os.hostname();
-    this.encryptionKey = this.deriveEncryptionKey();
+    this._preferredKdfVersion = this.normalizeKdfVersion(options.kdfVersion) || TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY;
+    this._fileKdfVersion = null;
+    this._derivedKeys = new Map();
 
     // Recovery behavior when the token file is unreadable (e.g., wrong key / corruption)
     // - "error" (default): do not modify the file; throw an error
@@ -47,8 +57,64 @@ class LocalSharedTokenManager {
       .toLowerCase();
   }
 
-  computeKeyFingerprint() {
-    return crypto.createHash('sha256').update(this.encryptionKey).digest('hex');
+  getMachineId() {
+    return process.env.EAUTH_MACHINE_ID ||
+      process.env.COMPUTERNAME ||
+      process.env.HOSTNAME ||
+      'default-machine';
+  }
+
+  normalizeKdfVersion(value) {
+    const n = Number(value);
+    if (n === TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID || n === TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY) {
+      return n;
+    }
+    return null;
+  }
+
+  getCandidateKdfVersions(preferred) {
+    const kdfVersion = this.normalizeKdfVersion(preferred);
+    if (kdfVersion === TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID) {
+      return [TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID, TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY];
+    }
+    if (kdfVersion === TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY) {
+      return [TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY, TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID];
+    }
+    return [TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY, TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID];
+  }
+
+  getEncryptionKeyForKdfVersion(kdfVersion) {
+    const normalized = this.normalizeKdfVersion(kdfVersion) || TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY;
+    if (this._derivedKeys.has(normalized)) {
+      return this._derivedKeys.get(normalized);
+    }
+    const key = this.deriveEncryptionKeyForKdfVersion(normalized);
+    this._derivedKeys.set(normalized, key);
+    return key;
+  }
+
+  computeKeyFingerprintForKey(key) {
+    return crypto.createHash('sha256').update(key).digest('hex');
+  }
+
+  computeMacKeyForEncryptionKey(encryptionKey) {
+    return crypto.createHash('sha256').update(Buffer.concat([
+      encryptionKey,
+      Buffer.from('token-file-mac-key-v1', 'utf8')
+    ])).digest();
+  }
+
+  computeMacForHeader(header, macKey) {
+    const parts = [
+      header.version || '',
+      header.algorithm || '',
+      String(header.kdfVersion || ''),
+      header.keyFingerprint || '',
+      header.iv || '',
+      header.data || '',
+      header.lastUpdated || ''
+    ];
+    return crypto.createHmac('sha256', macKey).update(parts.join('|'), 'utf8').digest('hex');
   }
 
   async executeWithLock(fn, operationName = 'operation') {
@@ -124,7 +190,8 @@ class LocalSharedTokenManager {
         'bad decrypt',
         'wrong final block length',
         'Invalid initialization vector',
-        'Key fingerprint mismatch'
+        'Key fingerprint mismatch',
+        'Integrity check failed'
       ];
       const isDecryptionError = decryptionIndicators.some(indicator => message.includes(indicator));
 
@@ -183,23 +250,33 @@ class LocalSharedTokenManager {
 
   encryptData(data) {
     try {
+      const kdfVersion = this._fileKdfVersion || this._preferredKdfVersion;
+      const encryptionKey = this.getEncryptionKeyForKdfVersion(kdfVersion);
       const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
+      const cipher = crypto.createCipheriv('aes-256-cbc', encryptionKey, iv);
       
       const jsonString = JSON.stringify(data);
       const encrypted = Buffer.concat([
         cipher.update(jsonString, 'utf8'),
         cipher.final()
       ]);
-      
-      return {
-        version: '1.0',
+
+      const header = {
+        version: TOKEN_FILE_FORMAT_VERSION,
         encrypted: true,
         algorithm: 'aes-256-cbc',
-        keyFingerprint: this.computeKeyFingerprint(),
+        kdfVersion,
+        keyFingerprint: this.computeKeyFingerprintForKey(encryptionKey),
         data: encrypted.toString('base64'),
         iv: iv.toString('base64'),
         lastUpdated: new Date().toISOString()
+      };
+
+      const macKey = this.computeMacKeyForEncryptionKey(encryptionKey);
+      return {
+        ...header,
+        macAlgorithm: TOKEN_FILE_MAC_ALGORITHM,
+        mac: this.computeMacForHeader(header, macKey)
       };
     } catch (error) {
       console.error('🚨 Failed to encrypt data:', error.message);
@@ -214,24 +291,55 @@ class LocalSharedTokenManager {
     }
 
     try {
-      if (encryptedData.keyFingerprint) {
-        const expected = this.computeKeyFingerprint();
-        if (encryptedData.keyFingerprint !== expected) {
-          throw new Error('Key fingerprint mismatch (EAUTH_MASTER_KEY may be different)');
-        }
+      if (encryptedData.algorithm && encryptedData.algorithm !== 'aes-256-cbc') {
+        throw new Error(`Unsupported token file algorithm: ${encryptedData.algorithm}`);
+      }
+      if (encryptedData.macAlgorithm && encryptedData.macAlgorithm !== TOKEN_FILE_MAC_ALGORITHM) {
+        throw new Error(`Unsupported token file MAC algorithm: ${encryptedData.macAlgorithm}`);
+      }
+
+      const expectedFingerprint = encryptedData.keyFingerprint;
+      const kdfVersions = this.getCandidateKdfVersions(encryptedData.kdfVersion);
+      const candidates = expectedFingerprint
+        ? kdfVersions.filter(version => {
+          const key = this.getEncryptionKeyForKdfVersion(version);
+          return this.computeKeyFingerprintForKey(key) === expectedFingerprint;
+        })
+        : kdfVersions;
+
+      if (expectedFingerprint && candidates.length === 0) {
+        throw new Error('Key fingerprint mismatch (EAUTH_MASTER_KEY may be different)');
       }
 
       const iv = Buffer.from(encryptedData.iv, 'base64');
       const encrypted = Buffer.from(encryptedData.data, 'base64');
-      
-      const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
-      
-      const decrypted = Buffer.concat([
-        decipher.update(encrypted),
-        decipher.final()
-      ]);
-      
-      return JSON.parse(decrypted.toString('utf8'));
+
+      let lastError = null;
+      for (const kdfVersion of candidates) {
+        const encryptionKey = this.getEncryptionKeyForKdfVersion(kdfVersion);
+        try {
+          if (encryptedData.mac) {
+            const macKey = this.computeMacKeyForEncryptionKey(encryptionKey);
+            const expectedMac = this.computeMacForHeader(encryptedData, macKey);
+            if (expectedMac !== encryptedData.mac) {
+              throw new Error('Integrity check failed');
+            }
+          }
+
+          const decipher = crypto.createDecipheriv('aes-256-cbc', encryptionKey, iv);
+          const decrypted = Buffer.concat([
+            decipher.update(encrypted),
+            decipher.final()
+          ]);
+          const parsed = JSON.parse(decrypted.toString('utf8'));
+          this._fileKdfVersion = kdfVersion;
+          return parsed;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError || new Error('Failed to decrypt token file data');
     } catch (error) {
       console.error('🚨 Failed to decrypt data:', error.message);
       throw error;
@@ -353,15 +461,37 @@ class LocalSharedTokenManager {
 
   deriveEncryptionKey() {
     try {
-      return crypto.scryptSync(
-        this.masterKey,
-        'ebay-research-salt-v1',
-        32
-      );
+      return this.deriveEncryptionKeyForKdfVersion(TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY);
     } catch (error) {
       console.error('🚨 Failed to derive encryption key:', error.message);
       throw error;
     }
+  }
+
+  deriveEncryptionKeyForKdfVersion(kdfVersion) {
+    const normalized = this.normalizeKdfVersion(kdfVersion) || TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY;
+    if (normalized === TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_PLUS_MACHINE_ID) {
+      return crypto.scryptSync(
+        this.masterKey + this.getMachineId(),
+        TOKEN_FILE_KDF_SALT,
+        32
+      );
+    }
+    return crypto.scryptSync(
+      this.masterKey,
+      TOKEN_FILE_KDF_SALT,
+      32
+    );
+  }
+
+  async migrateTokenFile(options = {}) {
+    const target = this.normalizeKdfVersion(options.kdfVersion) || TOKEN_FILE_KDF_VERSIONS.MASTER_KEY_ONLY;
+    await this.executeWithLock(async () => {
+      const data = await this.readTokenFile();
+      this._fileKdfVersion = target;
+      await this.saveTokenFile(data);
+    }, 'migrateTokenFile');
+    console.log(`✅ Token file migrated (kdfVersion=${target})`);
   }
 
   isExpired(token) {

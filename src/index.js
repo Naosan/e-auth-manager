@@ -5,13 +5,38 @@ import UserAccessToken_AuthorizationCodeManager from './UserAccessToken_Authoriz
 import { loadConfig } from './config.js';
 import { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType } from './ebayScopes.js';
 
-// Load configuration
-const config = loadConfig();
-const defaultAccountName = config.defaultAccountName || 'default';
+// Lazy initialization: do not load config or touch storage on import.
+let cachedConfig = null;
+let cachedDefaultTokenManager = null;
 
-// Default instance for backward compatibility - always use UserAccessToken_AuthorizationCodeManager with automatic dual storage
-const defaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
-console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
+const getConfig = (options = {}) => {
+  const shouldCache = !options || Object.keys(options).length === 0;
+  if (shouldCache && cachedConfig) {
+    return cachedConfig;
+  }
+
+  const config = loadConfig(options);
+  if (shouldCache) {
+    cachedConfig = config;
+  }
+  return config;
+};
+
+const getDefaultAccountName = () => {
+  const config = getConfig();
+  return config.defaultAccountName || 'default';
+};
+
+const getDefaultTokenManager = () => {
+  if (cachedDefaultTokenManager) {
+    return cachedDefaultTokenManager;
+  }
+
+  const config = getConfig();
+  cachedDefaultTokenManager = new UserAccessToken_AuthorizationCodeManager(config);
+  console.log('🔄 Using UserAccessToken_AuthorizationCodeManager with automatic dual storage (Database + Encrypted JSON)');
+  return cachedDefaultTokenManager;
+};
 
 // Export classes for direct access if needed
 export {
@@ -23,7 +48,7 @@ export {
 // Export OAuth scope utilities for convenience
 export { EBAY_SCOPES, getScopeString, validateScopeSubset, getScopesForApiType };
 
-const resolveAppId = (maybeAppId) => {
+const resolveAppId = (maybeAppId, config) => {
   if (typeof maybeAppId === 'string' && maybeAppId.trim().length > 0) {
     return maybeAppId;
   }
@@ -46,7 +71,9 @@ const buildLayerState = () => ({
  * @returns {Promise<{appId: string, isValid: boolean, source: ('database'|'encrypted-json'|null), layers: { database: Object, encryptedJson: Object }}>} Detailed health information
  */
 export const getRefreshTokenHealth = async (appId) => {
-  const effectiveAppId = resolveAppId(appId);
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
+  const effectiveAppId = resolveAppId(appId, config);
 
   const health = {
     appId: effectiveAppId,
@@ -123,6 +150,7 @@ export const getRefreshTokenHealth = async (appId) => {
  */
 export const getBrowseApiToken = (appId, options = {}) => {
   console.log('🔑 Getting Browse API Application Access Token');
+  const config = getConfig();
   
   // Handle case where first parameter is options object (backward compatibility)
   if (typeof appId === 'object' && appId !== null) {
@@ -150,6 +178,7 @@ export const getBrowseApiToken = (appId, options = {}) => {
  */
 export const getTaxonomyApiToken = (options = {}) => {
   console.log('🏷️ Getting Taxonomy API Application Access Token');
+  const config = getConfig();
   
   const manager = new ApplicationAccessToken_ClientCredentialsManager({ 
     ...config, 
@@ -168,6 +197,8 @@ export const getTaxonomyApiToken = (options = {}) => {
  */
 export const getSellMetadataApiToken = (appId) => {
   console.log('🧭 Getting Sell Metadata API User Access Token');
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME || process.env.EBAY_CLIENT_ID;
   }
@@ -190,6 +221,8 @@ export const getSellMetadataApiToken = (appId) => {
  */
 export const getTradingApiToken = (appId) => {
   console.log('🔑 Getting Trading API User Access Token');
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     // Use eBay official naming convention
     appId = config.defaultAppId || 
@@ -219,6 +252,8 @@ export const getTradingApiToken = (appId) => {
  */
 export const getMarketingApiToken = async (appId, options = {}) => {
   console.log('📣 Getting Marketing API User Access Token');
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
 
   // Backward compatibility: first argument can be options object
   if (typeof appId === 'object' && appId !== null) {
@@ -306,6 +341,8 @@ export const getApplicationAccessToken = () => {
  * @returns {Promise<string>} - User Access token
  */
 export const getUserAccessTokenByAppId = (appId) => {
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
   }
@@ -323,10 +360,16 @@ export const getUserAccessTokenByAppId = (appId) => {
  * @param {string} [accountName] - Account name
  * @returns {Promise<string>} - User Access token
  */
-export const getUserAccessToken = (accountName = defaultAccountName) => {
+export const getUserAccessToken = (accountName) => {
+  const config = getConfig();
+  const defaultAccountName = getDefaultAccountName();
+  const defaultTokenManager = getDefaultTokenManager();
+  const effectiveAccountName = (typeof accountName === 'string' && accountName.trim().length > 0)
+    ? accountName
+    : defaultAccountName;
   // Always use database-based manager with automatic dual storage
   // Try Default App ID first if no specific account name provided
-  if (accountName === defaultAccountName) {
+  if (effectiveAccountName === defaultAccountName) {
     const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
     if (appId) {
       return defaultTokenManager.getUserAccessTokenByAppId(appId).catch(() => {
@@ -334,7 +377,7 @@ export const getUserAccessToken = (accountName = defaultAccountName) => {
       });
     }
   }
-  return defaultTokenManager.getUserAccessToken(accountName);
+  return defaultTokenManager.getUserAccessToken(effectiveAccountName);
 };
 
 /**
@@ -342,6 +385,7 @@ export const getUserAccessToken = (accountName = defaultAccountName) => {
  * @returns {Promise<void>}
  */
 export const initialize = () => {
+  const defaultTokenManager = getDefaultTokenManager();
   if (defaultTokenManager.initialize) {
     return defaultTokenManager.initialize();
   }
@@ -398,6 +442,9 @@ export const checkRefreshTokenValidity = async (appId) => {
  * @returns {Promise<string>} Valid User Access Token for API requests
  */
 export const getValidAccessToken = () => {
+  const config = getConfig();
+  const defaultAccountName = getDefaultAccountName();
+  const defaultTokenManager = getDefaultTokenManager();
   // Always use database-based manager with automatic dual storage
   const appId = config.defaultAppId || process.env.EBAY_DEFAULT_APP_ID || process.env.EBAY_API_APP_NAME;
   if (appId) {
@@ -416,6 +463,8 @@ export const getValidAccessToken = () => {
  * @returns {Promise<Object>} User token information object
  */
 export const getUserTokenInfo = (appId) => {
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     appId = config.defaultAppId || 
              process.env.EBAY_CLIENT_ID ||
@@ -431,6 +480,8 @@ export const getUserTokenInfo = (appId) => {
  * @returns {Promise<Object>} User token expiration information object
  */
 export const getUserTokenExpiration = (appId) => {
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     appId = config.defaultAppId || 
              process.env.EBAY_CLIENT_ID ||
@@ -446,6 +497,8 @@ export const getUserTokenExpiration = (appId) => {
  * @returns {Promise<string>} The eBay account name
  */
 export const getUserAccountName = (appId) => {
+  const config = getConfig();
+  const defaultTokenManager = getDefaultTokenManager();
   if (!appId) {
     appId = config.defaultAppId || 
              process.env.EBAY_CLIENT_ID ||

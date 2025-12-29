@@ -50,6 +50,8 @@ const browseToken = await getBrowseApiToken();
 const marketingToken = await getMarketingApiToken();
 ```
 
+Importing `@naosan/e-auth-manager` is safe: it does not validate env vars or touch DB/files on import. Configuration is loaded lazily when you call exported helper functions or instantiate managers.
+
 ### Storage defaults (important, single-account)
 
 - Primary storage: SQLite `./database/ebay_tokens.sqlite` (relative to current working directory; override with `EBAY_DATABASE_PATH` / `EAUTH_DATABASE_PATH`).
@@ -123,7 +125,7 @@ EAUTH_MASTER_KEY=generate_a_secure_key
 
 ### Database schema
 
-SQLite DB is created automatically (WAL mode). Main table and metadata:
+SQLite DB is created automatically (WAL is opt-in via `EAUTH_SQLITE_WAL=1`). Main table and metadata:
 
 - `ebay_oauth_tokens`
   - `id INTEGER PRIMARY KEY AUTOINCREMENT`
@@ -439,7 +441,7 @@ $XDG_DATA_HOME/ebay-oauth-tokens/     // If XDG_DATA_HOME is set
 ### Encryption Modes
 
 - **Database (SQLite) fields**: AES-256-GCM (authenticated encryption)
-- **Local JSON cache**: AES-256-CBC (compatible and efficient for file payloads)
+- **Local JSON cache**: AES-256-CBC + HMAC-SHA256 (integrity-checked)
 - **SSOT (central JSON)**: AES-256-GCM with AAD
 
 All modes use the configured master key (default: hostname) and unique initialization vectors per encryption. Set `EAUTH_MASTER_KEY` to a shared secret to decrypt across hosts/containers.

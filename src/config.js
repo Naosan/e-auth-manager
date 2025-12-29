@@ -31,6 +31,31 @@ export function loadConfig(options = {}) {
   const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
   const hasValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
 
+  const expandHome = (value) => {
+    if (!hasValue(value)) {
+      return value;
+    }
+    const text = String(value).trim();
+    if (text === '~') {
+      return os.homedir();
+    }
+    if (text.startsWith('~/') || text.startsWith('~\\')) {
+      return path.join(os.homedir(), text.slice(2));
+    }
+    return text;
+  };
+
+  const resolveFsPath = (value) => {
+    if (!hasValue(value)) {
+      return value;
+    }
+    const expanded = expandHome(value);
+    if (expanded === ':memory:') {
+      return expanded;
+    }
+    return path.isAbsolute(expanded) ? expanded : path.resolve(expanded);
+  };
+
   // Optional config file (supports multiple values in one place)
   const configPath = pick(options.configPath, process.env.EAUTH_CONFIG, process.env.EAUTH_CONFIG_FILE);
   let fileConfig = {};
@@ -110,6 +135,43 @@ export function loadConfig(options = {}) {
     );
   }
 
+  const databasePathInput = pick(options.databasePath, fileConfig.databasePath, process.env.EAUTH_DATABASE_PATH, process.env.EBAY_DATABASE_PATH);
+  const databasePathDefault = './database/ebay_tokens.sqlite';
+  const databasePath = resolveFsPath(databasePathInput || databasePathDefault);
+  if (!databasePathInput) {
+    warnOnce(
+      'default:databasePath',
+      `⚠️ EAUTH_DATABASE_PATH is not set; using default databasePath "${databasePathDefault}" resolved to "${databasePath}". ` +
+        'In production/PM2, set an absolute EAUTH_DATABASE_PATH to avoid accidentally creating multiple empty DBs due to varying CWD.'
+    );
+  } else if (!path.isAbsolute(expandHome(databasePathInput)) && databasePathInput !== ':memory:') {
+    warnOnce(
+      'relative:databasePath',
+      `⚠️ databasePath "${databasePathInput}" is relative and is resolved against process.cwd()="${process.cwd()}" to "${databasePath}". ` +
+        'Consider using an absolute EAUTH_DATABASE_PATH to avoid CWD-related issues.'
+    );
+  }
+
+  const tokenFilePathInput = pick(options.tokenFilePath, fileConfig.tokenFilePath, process.env.EAUTH_TOKEN_FILE_PATH, process.env.EBAY_TOKEN_FILE_PATH);
+  const tokenFilePath = tokenFilePathInput ? resolveFsPath(tokenFilePathInput) : undefined;
+  if (tokenFilePathInput && !path.isAbsolute(expandHome(tokenFilePathInput)) && tokenFilePathInput !== ':memory:') {
+    warnOnce(
+      'relative:tokenFilePath',
+      `⚠️ tokenFilePath "${tokenFilePathInput}" is relative and is resolved against process.cwd()="${process.cwd()}" to "${tokenFilePath}". ` +
+        'Consider using an absolute EAUTH_TOKEN_FILE_PATH to avoid CWD-related issues.'
+    );
+  }
+
+  const ssotJsonPathInput = pick(options.ssotJsonPath, fileConfig.ssotJsonPath, process.env.EAUTH_SSOT_JSON, process.env.OAUTH_SSOT_JSON);
+  const ssotJsonPath = ssotJsonPathInput ? resolveFsPath(ssotJsonPathInput) : undefined;
+  if (ssotJsonPathInput && !path.isAbsolute(expandHome(ssotJsonPathInput)) && ssotJsonPathInput !== ':memory:') {
+    warnOnce(
+      'relative:ssotJsonPath',
+      `⚠️ ssotJsonPath "${ssotJsonPathInput}" is relative and is resolved against process.cwd()="${process.cwd()}" to "${ssotJsonPath}". ` +
+        'Consider using an absolute EAUTH_SSOT_JSON / OAUTH_SSOT_JSON path to avoid CWD-related issues.'
+    );
+  }
+
   const config = {
     // eBay API Credentials (REQUIRED)
     clientId,
@@ -129,10 +191,10 @@ export function loadConfig(options = {}) {
     environment: pick(options.environment, fileConfig.environment, process.env.EAUTH_ENVIRONMENT, process.env.EBAY_ENVIRONMENT, 'PRODUCTION'),
     
     // Database configuration
-    databasePath: pick(options.databasePath, fileConfig.databasePath, process.env.EAUTH_DATABASE_PATH, process.env.EBAY_DATABASE_PATH, './database/ebay_tokens.sqlite'),
+    databasePath,
     
     // File-based token storage configuration
-    tokenFilePath: pick(options.tokenFilePath, fileConfig.tokenFilePath, process.env.EAUTH_TOKEN_FILE_PATH, process.env.EBAY_TOKEN_FILE_PATH),
+    tokenFilePath,
 
     // Encryption configuration
     encryptionEnabled: options.encryptionEnabled ?? true,
@@ -157,7 +219,7 @@ export function loadConfig(options = {}) {
     ),
     
     // Centralized JSON (SSOT) configuration
-    ssotJsonPath: pick(options.ssotJsonPath, fileConfig.ssotJsonPath, process.env.EAUTH_SSOT_JSON, process.env.OAUTH_SSOT_JSON),
+    ssotJsonPath,
     tokenNamespace: pick(options.tokenNamespace, fileConfig.tokenNamespace, process.env.EAUTH_TOKEN_NAMESPACE, process.env.TOKEN_NAMESPACE, 'ebay-oauth')
   };
 

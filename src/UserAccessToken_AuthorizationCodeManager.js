@@ -28,7 +28,7 @@ class UserAccessToken_AuthorizationCodeManager {
     }
 
     // Database path - configurable
-    this.dbPath = options.databasePath || path.resolve('./database/ebay_tokens.sqlite');
+    this.dbPath = options.databasePath ? path.resolve(options.databasePath) : path.resolve('./database/ebay_tokens.sqlite');
     
     // eBay API credentials
     this.clientId = options.clientId;
