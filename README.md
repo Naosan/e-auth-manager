@@ -87,6 +87,7 @@ Use the appropriate token type based on the API family and whether user consent 
 | --- | --- | --- |
 | **Required** | `EAUTH_CLIENT_ID`, `EAUTH_CLIENT_SECRET` (aliases: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_API_APP_NAME`, `EBAY_API_CERT_NAME`) | Needed for every token request. |
 | **Security (optional)** | `EAUTH_MASTER_KEY` (legacy alias: `EBAY_OAUTH_TOKEN_MANAGER_MASTER_KEY`, deprecated) | Overrides the per-machine default (hostname). Needed only when sharing encrypted tokens across hosts. |
+| **Legacy migration (optional)** | `EAUTH_MACHINE_ID` | Only needed to decrypt/migrate legacy encrypted JSON token files written by very old versions that derived the file key from `masterKey + COMPUTERNAME/HOSTNAME`. |
 | **Default refresh token** | `EAUTH_INITIAL_REFRESH_TOKEN` (legacy alias: `EBAY_INITIAL_REFRESH_TOKEN`, deprecated) | Seeds the single `default` account for the configured `defaultAppId` (by default this is `EAUTH_CLIENT_ID`) the first time the manager runs. |
 | **Seeding mode** | `EAUTH_INITIAL_REFRESH_TOKEN_MODE` | `auto` (default): seed only on missing/expired. `sync`: overwrite when different (dangerous; use only if env is SSOT). |
 | **Safety toggles** | `EAUTH_PURGE_ON_KEY_CHANGE`, `EAUTH_TOKEN_FILE_RECOVERY_MODE` | Opt-in destructive recovery actions (key mismatch purge, token-file backup/reset). |
@@ -463,6 +464,27 @@ const manager = new UserAccessToken_AuthorizationCodeManager({
   // Optional override; leave unset to use the per-machine default key
   masterKey: process.env.EAUTH_MASTER_KEY
 });
+```
+
+### Legacy encrypted JSON migration (`EAUTH_MACHINE_ID`, `migrateTokenFile`)
+
+Very old versions derived the encrypted JSON file key from `masterKey + machineId` (where `machineId` came from `COMPUTERNAME`/`HOSTNAME`), which breaks decryption when apps mix versions or when the file is moved across hosts. The current default KDF uses `masterKey` only.
+
+- If you need to decrypt an old token file created on another host, set `EAUTH_MACHINE_ID` to the original `COMPUTERNAME`/`HOSTNAME` used when the file was written.
+- The library does **not** auto-migrate the file format/KDF on read. To rewrite the token file using the current KDF, run an explicit migration:
+
+```javascript
+import LocalSharedTokenManager from '@naosan/e-auth-manager/file';
+
+const manager = new LocalSharedTokenManager({
+  // Optional; omit to use the OS-specific default path
+  tokenFilePath: process.env.EAUTH_TOKEN_FILE_PATH,
+  // Must match the key used when the file was created
+  masterKey: process.env.EAUTH_MASTER_KEY
+});
+
+// Re-encrypt token file with masterKey-only KDF (recommended)
+await manager.migrateTokenFile({ kdfVersion: 2 });
 ```
 
 ### Encryption Key Fingerprint & Key-Change Handling
